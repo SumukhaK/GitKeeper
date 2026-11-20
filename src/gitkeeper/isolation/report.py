@@ -57,6 +57,8 @@ def isolation_passes(report: IsolationReport) -> bool:
     probe_names = [probe.name for probe in report.host_probe_results]
     if len(probe_names) != len(set(probe_names)):
         return False
+    if report.credential_probe_result.name != "credential_exposure":
+        return False
     if not REQUIRED_HOST_PROBES.issubset(probe_names):
         return False
     if not all(probe.passed for probe in report.host_probe_results):
@@ -68,3 +70,18 @@ def isolation_passes(report: IsolationReport) -> bool:
     if not report.evidence_paths:
         return False
     return True
+
+
+class IsolationGateError(RuntimeError):
+    pass
+
+
+def require_verified(
+    report: IsolationReport, expected_prototype_id: str
+) -> None:
+    if not expected_prototype_id.strip():
+        raise IsolationGateError("an expected isolation prototype ID is required")
+    if report.prototype_id != expected_prototype_id:
+        raise IsolationGateError("isolation report prototype ID does not match")
+    if not isolation_passes(report):
+        raise IsolationGateError("isolation report is incomplete or failed")
