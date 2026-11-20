@@ -13,6 +13,7 @@ from PySide6.QtTest import QTest
 from gitkeeper.ui.app import create_viewmodels
 from gitkeeper.ui.services.config_publisher import ConfigPullRequest
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
+from gitkeeper.ui.viewmodels.telemetry import TelemetryViewModel
 from tests.fakes.fake_config_publisher import FakeConfigPublisher
 from tests.fakes.fake_queue_service import FakeQueueService
 from tests.ui.test_queue_viewmodel import make_item as make_queue_item
@@ -50,6 +51,9 @@ def load_main_window():
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
     context.setContextProperty("appSettingsViewModel", settings_view_model)
+    context.setContextProperty(
+        "appTelemetryViewModel", TelemetryViewModel(None)
+    )
     qml_path = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -205,6 +209,24 @@ def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
     assert status_view_model.current_sha == "sha-43-ready"
     assert window.findChild(QObject, "feedbackHeadShaInput").property("text") == "sha-43-ready"
     assert queue_view_model.items[0]["pr_number"] == 42
+    engine.deleteLater()
+
+
+def test_handscroll_includes_local_telemetry_and_retention_controls():
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    telemetry_button = window.findChild(QObject, "telemetryTabButton")
+    assert telemetry_button is not None
+    telemetry_button.click()
+    application.processEvents()
+
+    events_text = window.findChild(QObject, "telemetryEventsText")
+    retention_input = window.findChild(QObject, "telemetryRetentionDays")
+    assert window.findChild(QObject, "handscrollPages").property("currentIndex") == 3
+    assert events_text.property("text") == "Telemetry service unavailable."
+    assert retention_input.property("value") == 90
     engine.deleteLater()
 
 

@@ -2,6 +2,7 @@ from typing import Literal
 
 
 ErrorCategory = Literal["remote_connectivity", "local_persistence", "unknown"]
+TelemetryErrorCategory = Literal["local_persistence", "unknown"]
 
 _ERROR_MESSAGES: dict[str, dict[ErrorCategory, str]] = {
     "status": {
@@ -26,3 +27,20 @@ class QueueServiceError(Exception):
 
     def user_message(self, context: Literal["status", "queue"]) -> str:
         return _ERROR_MESSAGES[context][self.category]
+
+
+_TELEMETRY_ERROR_MESSAGES: dict[TelemetryErrorCategory, str] = {
+    "local_persistence": "Local telemetry is unavailable; showing the last known history.",
+    "unknown": "Telemetry could not refresh; showing the last known history.",
+}
+
+
+class TelemetryServiceError(Exception):
+    def __init__(self, category: TelemetryErrorCategory) -> None:
+        if category not in _TELEMETRY_ERROR_MESSAGES:
+            raise ValueError(f"unsupported telemetry service error category: {category!r}")
+        self.category = category
+        super().__init__(category)
+
+    def user_message(self) -> str:
+        return _TELEMETRY_ERROR_MESSAGES[self.category]

@@ -11,6 +11,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from gitkeeper.ui.viewmodels.queue import QueueViewModel
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from gitkeeper.ui.viewmodels.status import StatusViewModel
+from gitkeeper.ui.viewmodels.telemetry import TelemetryViewModel
 
 
 def create_viewmodels(queue_service: Any) -> tuple[StatusViewModel, QueueViewModel]:
@@ -28,6 +29,7 @@ def main(
     argv: Sequence[str] | None = None,
     config_publisher: Any = None,
     isolation_verified: bool = False,
+    telemetry_service: Any = None,
 ) -> int:
     QQuickStyle.setStyle("Basic")
     application = QGuiApplication(list(argv) if argv is not None else sys.argv)
@@ -35,11 +37,15 @@ def main(
     settings_view_model = SettingsViewModel(
         config_publisher, isolation_verified=isolation_verified
     )
+    telemetry_view_model = TelemetryViewModel(telemetry_service)
+    if telemetry_service is not None:
+        telemetry_view_model.refresh()
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
     context.setContextProperty("appSettingsViewModel", settings_view_model)
+    context.setContextProperty("appTelemetryViewModel", telemetry_view_model)
 
     qml_path = Path(__file__).parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))

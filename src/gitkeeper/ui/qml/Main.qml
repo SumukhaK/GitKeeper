@@ -55,6 +55,7 @@ ApplicationWindow {
         statusViewModel: appStatusViewModel
         queueViewModel: appQueueViewModel
         settingsViewModel: appSettingsViewModel
+        telemetryViewModel: appTelemetryViewModel
         panelVisible: window.panelVisible
         onCloseRequested: window.panelVisible = false
     }

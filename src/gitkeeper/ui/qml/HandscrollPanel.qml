@@ -18,6 +18,7 @@ Rectangle {
     property var statusViewModel
     property var queueViewModel
     property var settingsViewModel
+    property var telemetryViewModel
     signal closeRequested()
 
     ColumnLayout {
@@ -78,6 +79,14 @@ Rectangle {
                 Accessible.name: accessibleLabel
                 onClicked: pageStack.currentIndex = 2
             }
+
+            Button {
+                objectName: "telemetryTabButton"
+                text: "Telemetry"
+                property string accessibleLabel: "Show telemetry"
+                Accessible.name: accessibleLabel
+                onClicked: pageStack.currentIndex = 3
+            }
         }
 
         StackLayout {
@@ -97,6 +106,10 @@ Rectangle {
 
             SettingsPage {
                 settingsViewModel: root.settingsViewModel
+            }
+
+            TelemetryPage {
+                telemetryViewModel: root.telemetryViewModel
             }
         }
 
