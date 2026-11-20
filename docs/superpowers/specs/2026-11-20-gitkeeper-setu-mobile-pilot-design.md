@@ -93,7 +93,7 @@ CI results for any prior SHA are stale and cannot authorize a run. Passing deter
 
 ### Local worker execution safety gate
 
-The worker can run project-defined tools and tests on a developer machine; a PR author's identity does not make repository contents safe. Every invocation therefore uses a dedicated PR worktree, never the companion's installation directory, the user's unrelated checkout, or either repository's GitKeeper source checkout. The worker must not inherit GitHub credentials, desktop sign-in tokens, or unrelated environment secrets.
+The worker can execute project-defined commands on a developer machine; a PR author's identity does not make repository contents safe. GitHub Actions remains the sole test gate, and the worker/companion do not run the required test suite locally before publishing. Every invocation therefore uses a dedicated PR worktree, never the companion's installation directory, the user's unrelated checkout, or either repository's GitKeeper source checkout. The worker must not inherit GitHub credentials, desktop sign-in tokens, or unrelated environment secrets.
 
 **Implementation gate:** build a Windows OS-level isolation prototype for executing PR-controlled build/test commands and verify its isolation properties before enabling any worker execution. Until that prototype passes, neither automatic queue processing nor user-triggered worker execution may launch OpenCode. A dedicated worktree alone is not a security sandbox. Prompt instructions and the PR-author allowlist are never security controls and do not satisfy this gate.
 
@@ -222,4 +222,4 @@ Errors visible in the panel should identify whether the issue is remote connecti
 
 ## Deferred decision
 
-Before implementation can safely enable the local worker, build and verify the Windows OS-level isolation prototype described above. Worker-output publication is decided: after both post-run validations pass, the companion commits and pushes to the existing PR branch under the restrictions in Worker behavior. Until the isolation gate passes, all worker execution remains disabled. No other unresolved product decision is required to author this pilot specification.
+Before implementation can safely enable the local worker, build and verify the Windows OS-level isolation prototype described above. Worker-output publication is decided: after both pre-publish validations pass, the companion commits and pushes to the existing PR branch under the restrictions in Worker behavior. GitHub Actions, not local execution, validates tests after the push. Until the isolation gate passes, all worker execution remains disabled. No other unresolved product decision is required to author this pilot specification.
