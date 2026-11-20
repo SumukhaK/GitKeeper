@@ -5,6 +5,9 @@ from PySide6.QtCore import Property, QObject, Signal
 
 from gitkeeper.ui.errors import QueueServiceError
 
+_CHECK_RESULTS = {"passed", "deterministic_failure", "blocked", "unknown"}
+_WORKER_STATES = {"ready", "queued", "running", "blocked"}
+
 
 class StatusViewModel(QObject):
     changed = Signal()
@@ -17,32 +20,33 @@ class StatusViewModel(QObject):
         self._is_stale = False
         self._error_message: str | None = None
 
-    @Property(object, notify=changed)
-    def repository(self) -> str | None:
-        return getattr(self._item, "repository", None)
+    @Property(str, notify=changed)
+    def repository(self) -> str:
+        return getattr(self._item, "repository", "") or ""
 
-    @Property(object, notify=changed)
-    def pr_number(self) -> int | None:
-        return self._pr_number
+    @Property(int, notify=changed)
+    def pr_number(self) -> int:
+        return self._pr_number or 0
 
-    @Property(object, notify=changed)
-    def current_sha(self) -> str | None:
-        return getattr(self._item, "current_head_sha", None)
+    @Property(str, notify=changed)
+    def current_sha(self) -> str:
+        return getattr(self._item, "current_head_sha", "") or ""
 
-    @Property(object, notify=changed)
-    def eligibility(self) -> bool | None:
-        return getattr(self._item, "eligible", None)
+    @Property(bool, notify=changed)
+    def eligibility(self) -> bool:
+        return getattr(self._item, "eligible", False) is True
 
-    @Property(object, notify=changed)
-    def ci_result(self) -> str | None:
+    @Property(str, notify=changed)
+    def ci_result(self) -> str:
         check_state = getattr(self._item, "check_state", None)
         if check_state is None:
-            return None
-        return getattr(check_state, "value", check_state)
+            return ""
+        value = getattr(check_state, "value", check_state)
+        return value if isinstance(value, str) and value in _CHECK_RESULTS else "unknown"
 
-    @Property(object, notify=changed)
-    def remote_state(self) -> str | None:
-        labels = getattr(self._item, "remote_labels", ())
+    @Property(str, notify=changed)
+    def remote_state(self) -> str:
+        labels = getattr(self._item, "remote_labels", ()) or ()
         for label in (
             "gitkeeper/worker-running",
             "gitkeeper/worker-queued",
@@ -50,25 +54,28 @@ class StatusViewModel(QObject):
         ):
             if label in labels:
                 return label
-        return None
+        return ""
 
-    @Property(object, notify=changed)
-    def worker_state(self) -> str | None:
+    @Property(str, notify=changed)
+    def worker_state(self) -> str:
         state = getattr(self._item, "state", None)
-        return getattr(state, "value", state)
+        value = getattr(state, "value", state)
+        return value if isinstance(value, str) and value in _WORKER_STATES else "unknown"
 
-    @Property(object, notify=changed)
-    def last_updated(self) -> str | None:
+    @Property(str, notify=changed)
+    def last_updated(self) -> str:
         value = getattr(self._item, "last_updated", None)
-        return value.isoformat() if isinstance(value, datetime) else value
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value or "")
 
     @Property(bool, notify=changed)
     def is_stale(self) -> bool:
         return self._is_stale
 
-    @Property(object, notify=changed)
-    def error_message(self) -> str | None:
-        return self._error_message
+    @Property(str, notify=changed)
+    def error_message(self) -> str:
+        return self._error_message or ""
 
     def refresh(self) -> None:
         if self._pr_number is None:

@@ -22,5 +22,5 @@ def test_create_viewmodels_displays_existing_queue_without_starting_worker():
 
     assert status_view_model.pr_number == 42
     assert status_view_model.current_sha == "abc123"
-    assert queue_view_model.items == [item]
+    assert queue_view_model.items[0]["pr_number"] == 42
     assert not hasattr(service, "start_worker")

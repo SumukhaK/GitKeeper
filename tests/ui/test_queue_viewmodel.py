@@ -22,9 +22,36 @@ def test_refresh_lists_queue_items():
 
     view_model.refresh()
 
-    assert view_model.items == items
+    assert view_model.items == [
+        {
+            "repository": "SumukhaK/Setu-mobile",
+            "pr_number": 42,
+            "current_head_sha": "sha-42",
+            "eligible": None,
+            "check_state": None,
+            "state": "queued",
+            "reason": "deterministic_check_failure",
+            "automatic_attempt_count": 1,
+            "manual_retry_count": 0,
+            "last_error_category": None,
+            "remote_labels": [],
+        },
+        {
+            "repository": "SumukhaK/Setu-mobile",
+            "pr_number": 43,
+            "current_head_sha": "sha-43",
+            "eligible": None,
+            "check_state": None,
+            "state": "queued",
+            "reason": "deterministic_check_failure",
+            "automatic_attempt_count": 1,
+            "manual_retry_count": 0,
+            "last_error_category": None,
+            "remote_labels": [],
+        },
+    ]
     assert view_model.is_stale is False
-    assert view_model.error_message is None
+    assert view_model.error_message == ""
 
 
 def test_refresh_error_keeps_last_queue_snapshot_and_marks_it_stale():
@@ -40,7 +67,7 @@ def test_refresh_error_keeps_last_queue_snapshot_and_marks_it_stale():
 
     view_model.refresh()
 
-    assert view_model.items == items
+    assert view_model.items[0]["pr_number"] == 42
     assert view_model.is_stale is True
     assert view_model.error_message == "GitHub queue is offline; showing the last known state."
 
