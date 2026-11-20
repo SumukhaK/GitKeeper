@@ -15,3 +15,6 @@ ui = ["PySide6", "pytest-qt"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"gitkeeper.ui" = ["qml/*.qml"]

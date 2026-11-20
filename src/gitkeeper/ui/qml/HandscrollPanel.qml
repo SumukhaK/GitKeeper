@@ -17,6 +17,7 @@ Rectangle {
     property bool panelVisible: false
     property var statusViewModel
     property var queueViewModel
+    property var settingsViewModel
     signal closeRequested()
 
     ColumnLayout {
@@ -69,6 +70,14 @@ Rectangle {
                 Accessible.name: accessibleLabel
                 onClicked: pageStack.currentIndex = 1
             }
+
+            Button {
+                objectName: "settingsTabButton"
+                text: "Settings"
+                property string accessibleLabel: "Show settings"
+                Accessible.name: accessibleLabel
+                onClicked: pageStack.currentIndex = 2
+            }
         }
 
         StackLayout {
@@ -79,10 +88,15 @@ Rectangle {
 
             PRStatusPage {
                 statusViewModel: root.statusViewModel
+                queueViewModel: root.queueViewModel
             }
 
             QueuePage {
                 queueViewModel: root.queueViewModel
+            }
+
+            SettingsPage {
+                settingsViewModel: root.settingsViewModel
             }
         }
 

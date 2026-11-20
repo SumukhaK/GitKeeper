@@ -54,6 +54,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         statusViewModel: appStatusViewModel
         queueViewModel: appQueueViewModel
+        settingsViewModel: appSettingsViewModel
         panelVisible: window.panelVisible
         onCloseRequested: window.panelVisible = false
     }

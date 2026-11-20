@@ -1,0 +1,135 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+Item {
+    id: root
+
+    property var settingsViewModel
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        spacing: 8
+
+        Text {
+            text: "Companion settings"
+            color: "#392820"
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
+        }
+
+        CheckBox {
+            objectName: "settingsWorkerEnabledCheckBox"
+            text: "Enable worker in merged configuration"
+            checked: root.settingsViewModel
+                     ? root.settingsViewModel.worker_enabled : false
+            enabled: root.settingsViewModel
+                     && (root.settingsViewModel.can_enable_worker || checked)
+            Accessible.name: text
+            onToggled: root.settingsViewModel.set_worker_enabled(checked)
+        }
+
+        Text {
+            visible: root.settingsViewModel
+                     && !root.settingsViewModel.can_enable_worker
+            text: "Worker execution is locked until Windows isolation is verified."
+            textFormat: Text.PlainText
+            color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        TextField {
+            id: modelIdInput
+            objectName: "settingsModelIdInput"
+            Layout.fillWidth: true
+            text: root.settingsViewModel
+                  ? root.settingsViewModel.opencode_model_id : ""
+            Accessible.name: "OpenCode model ID"
+            placeholderText: "Select an exact OpenCode model ID"
+            onTextEdited: root.settingsViewModel.set_opencode_model_id(text)
+        }
+
+        Text {
+            text: "Polling: adaptive"
+            textFormat: Text.PlainText
+            color: "#66564a"
+        }
+
+        ComboBox {
+            id: motionPreference
+            objectName: "settingsMotionPreference"
+            Layout.fillWidth: true
+            model: ["System default", "Reduced motion", "Disabled motion"]
+            currentIndex: {
+                if (!root.settingsViewModel
+                        || root.settingsViewModel.motion_preference === "")
+                    return 0
+                return root.settingsViewModel.motion_preference === "reduced" ? 1 : 2
+            }
+            Accessible.name: "Motion preference"
+            onActivated: function(index) {
+                var preferences = ["", "reduced", "disabled"]
+                root.settingsViewModel.set_motion_preference(preferences[index])
+            }
+        }
+
+        Button {
+            objectName: "settingsPublishButton"
+            text: "Validate and create/update config PR"
+            Accessible.name: "Publish settings as a config pull request"
+            onClicked: root.settingsViewModel.publish()
+        }
+
+        Text {
+            objectName: "settingsConfigPrStatus"
+            text: {
+                if (!root.settingsViewModel)
+                    return "Configuration publisher unavailable"
+                if (root.settingsViewModel.config_pr_url === "")
+                    return "Config PR: " + root.settingsViewModel.config_pr_state
+                return "Config PR: " + root.settingsViewModel.config_pr_state
+                    + " - " + root.settingsViewModel.config_pr_merge_status
+                    + " - " + root.settingsViewModel.config_pr_url
+            }
+            textFormat: Text.PlainText
+            color: "#392820"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            visible: root.settingsViewModel
+                     && root.settingsViewModel.config_pr_validation_status !== "valid"
+            text: root.settingsViewModel
+                  ? "Validation: " + root.settingsViewModel.config_pr_validation_status : ""
+            textFormat: Text.PlainText
+            color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            visible: root.settingsViewModel
+                     && root.settingsViewModel.validation_message !== ""
+            text: root.settingsViewModel
+                  ? root.settingsViewModel.validation_message : ""
+            textFormat: Text.PlainText
+            color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            visible: root.settingsViewModel
+                     && root.settingsViewModel.publication_error !== ""
+            text: root.settingsViewModel
+                  ? root.settingsViewModel.publication_error : ""
+            textFormat: Text.PlainText
+            color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+    }
+}

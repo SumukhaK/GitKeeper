@@ -9,6 +9,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from gitkeeper.ui.viewmodels.queue import QueueViewModel
+from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from gitkeeper.ui.viewmodels.status import StatusViewModel
 
 
@@ -22,14 +23,23 @@ def create_viewmodels(queue_service: Any) -> tuple[StatusViewModel, QueueViewMod
     return status_view_model, queue_view_model
 
 
-def main(queue_service: Any, argv: Sequence[str] | None = None) -> int:
+def main(
+    queue_service: Any,
+    argv: Sequence[str] | None = None,
+    config_publisher: Any = None,
+    isolation_verified: bool = False,
+) -> int:
     QQuickStyle.setStyle("Basic")
     application = QGuiApplication(list(argv) if argv is not None else sys.argv)
     status_view_model, queue_view_model = create_viewmodels(queue_service)
+    settings_view_model = SettingsViewModel(
+        config_publisher, isolation_verified=isolation_verified
+    )
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
+    context.setContextProperty("appSettingsViewModel", settings_view_model)
 
     qml_path = Path(__file__).parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))

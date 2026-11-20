@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from PySide6.QtCore import Property, QObject, Signal
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from gitkeeper.ui.errors import QueueServiceError
 
@@ -19,6 +19,7 @@ class StatusViewModel(QObject):
         self._item: Any | None = None
         self._is_stale = False
         self._error_message: str | None = None
+        self._feedback_error = ""
 
     @Property(str, notify=changed)
     def repository(self) -> str:
@@ -76,6 +77,75 @@ class StatusViewModel(QObject):
     @Property(str, notify=changed)
     def error_message(self) -> str:
         return self._error_message or ""
+
+    @Property(str, notify=changed)
+    def feedback_error(self) -> str:
+        return self._feedback_error
+
+    @Slot(int)
+    def select_pull_request(self, pr_number: int) -> None:
+        if pr_number <= 0:
+            self._feedback_error = "Select a valid pull request."
+            self.changed.emit()
+            return
+        self._pr_number = pr_number
+        self._item = None
+        self._is_stale = False
+        self._error_message = None
+        self._feedback_error = ""
+        self.refresh()
+
+    @Slot(str, str, bool, result=bool)
+    def submit_review_feedback(
+        self,
+        feedback: str,
+        associated_head_sha: str,
+        reassociate: bool = False,
+    ) -> bool:
+        if self._pr_number is None:
+            self._feedback_error = "Select a pull request before submitting feedback."
+            self.changed.emit()
+            return False
+        if self._is_stale or not self.current_sha:
+            self._feedback_error = (
+                "Refresh the pull request status before submitting feedback."
+            )
+            self.changed.emit()
+            return False
+        if self.ci_result != "passed":
+            self._feedback_error = (
+                "Wait for deterministic checks to pass before submitting Claude feedback."
+            )
+            self.changed.emit()
+            return False
+        if not feedback.strip():
+            self._feedback_error = "Enter the review feedback to submit."
+            self.changed.emit()
+            return False
+
+        current_sha = self.current_sha
+        if associated_head_sha != current_sha and not reassociate:
+            self._feedback_error = (
+                "The feedback SHA is outdated. Explicitly re-associate it with "
+                "the current head before submitting."
+            )
+            self.changed.emit()
+            return False
+
+        try:
+            self._queue_service.submit_review_feedback(
+                self._pr_number,
+                current_sha if reassociate else associated_head_sha,
+                feedback.strip(),
+            )
+        except QueueServiceError as error:
+            self._feedback_error = error.user_message("feedback")
+            self.changed.emit()
+            return False
+
+        self._feedback_error = ""
+        self.changed.emit()
+        return True
 
     def refresh(self) -> None:
         if self._pr_number is None:

@@ -70,6 +70,25 @@ def test_remote_error_preserves_last_status_and_marks_it_stale():
     assert view_model.error_message == "GitHub status is offline; showing the last known state."
 
 
+def test_select_pull_request_refreshes_status_for_that_pr():
+    from gitkeeper.ui.viewmodels.status import StatusViewModel
+    from tests.fakes.fake_queue_service import FakeQueueService
+
+    service = FakeQueueService(
+        items={
+            42: make_item(),
+            43: make_item(pr_number=43, current_head_sha="sha-43"),
+        }
+    )
+    view_model = StatusViewModel(service, pr_number=42)
+    view_model.refresh()
+
+    view_model.select_pull_request(43)
+
+    assert view_model.pr_number == 43
+    assert view_model.current_sha == "sha-43"
+
+
 def test_unknown_check_state_is_not_rendered_as_remote_markup():
     from gitkeeper.ui.viewmodels.status import StatusViewModel
     from tests.fakes.fake_queue_service import FakeQueueService

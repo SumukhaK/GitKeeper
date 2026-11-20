@@ -11,6 +11,9 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 
 from gitkeeper.ui.app import create_viewmodels
+from gitkeeper.ui.services.config_publisher import ConfigPullRequest
+from gitkeeper.ui.viewmodels.settings import SettingsViewModel
+from tests.fakes.fake_config_publisher import FakeConfigPublisher
 from tests.fakes.fake_queue_service import FakeQueueService
 from tests.ui.test_queue_viewmodel import make_item as make_queue_item
 from tests.ui.test_status_viewmodel import make_item as make_status_item
@@ -19,14 +22,34 @@ from tests.ui.test_status_viewmodel import make_item as make_status_item
 def load_main_window():
     application = QGuiApplication.instance() or QGuiApplication([])
     service = FakeQueueService(
-        items={42: make_status_item()},
+        items={
+            42: make_status_item(),
+            43: make_status_item(
+                pr_number=43,
+                current_head_sha="sha-43-ready",
+                check_state="passed",
+                state="ready",
+                remote_labels=[],
+            ),
+        },
         queue_items=[make_queue_item(42)],
     )
     status_view_model, queue_view_model = create_viewmodels(service)
+    settings_view_model = SettingsViewModel(
+        FakeConfigPublisher(
+            ConfigPullRequest(
+                url="",
+                state="unknown",
+                validation_status="not-published",
+                merge_status="not-published",
+            )
+        )
+    )
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
+    context.setContextProperty("appSettingsViewModel", settings_view_model)
     qml_path = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -47,11 +70,18 @@ def load_main_window():
     window = engine.rootObjects()[0]
     window.show()
     application.processEvents()
-    return application, engine, window, status_view_model, queue_view_model
+    return (
+        application,
+        engine,
+        window,
+        status_view_model,
+        queue_view_model,
+        settings_view_model,
+    )
 
 
 def test_pet_opens_and_closes_handscroll_panel():
-    application, engine, window, status_view_model, queue_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
     fox_button = window.findChild(QObject, "foxPetButton")
     close_button = window.findChild(QObject, "handscrollCloseButton")
 
@@ -70,7 +100,7 @@ def test_pet_opens_and_closes_handscroll_panel():
 
 
 def test_pet_opens_handscroll_with_keyboard():
-    application, engine, window, status_view_model, queue_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
 
     window.requestActivate()
     QTest.keyClick(window, Qt.Key.Key_Tab)
@@ -85,7 +115,7 @@ def test_pet_opens_handscroll_with_keyboard():
 
 @pytest.mark.parametrize("motion_preference", ["reduced", "disabled"])
 def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
-    application, engine, window, status_view_model, queue_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
     fox_button = window.findChild(QObject, "foxPetButton")
     queue_button = window.findChild(QObject, "queueTabButton")
 
@@ -100,7 +130,7 @@ def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
 
 
 def test_status_and_queue_pages_render_textual_state():
-    application, engine, window, status_view_model, queue_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
     status_text = window.findChild(QObject, "statusStateText")
     repository_text = window.findChild(QObject, "statusRepositoryText")
     worker_state_text = window.findChild(QObject, "workerStateText")
@@ -126,6 +156,55 @@ def test_status_and_queue_pages_render_textual_state():
     status_button.click()
     assert stack.property("currentIndex") == 0
     application.processEvents()
+    engine.deleteLater()
+
+
+def test_handscroll_exposes_settings_and_manual_feedback_controls():
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    feedback_input = window.findChild(QObject, "feedbackTextInput")
+    feedback_sha = window.findChild(QObject, "feedbackHeadShaInput")
+    submit_feedback = window.findChild(QObject, "feedbackSubmitButton")
+    settings_button = window.findChild(QObject, "settingsTabButton")
+    settings_worker_toggle = window.findChild(QObject, "settingsWorkerEnabledCheckBox")
+    settings_model_input = window.findChild(QObject, "settingsModelIdInput")
+    settings_motion_combo = window.findChild(QObject, "settingsMotionPreference")
+
+    assert feedback_input is not None
+    assert feedback_sha.property("text") == "abc123"
+    assert submit_feedback is not None
+    assert settings_button is not None
+    assert settings_worker_toggle is not None
+    assert settings_worker_toggle.property("enabled") is False
+    assert settings_model_input is not None
+    assert settings_model_input.property("text") == ""
+    assert settings_motion_combo is not None
+
+    settings_button.click()
+    assert window.findChild(QObject, "handscrollPages").property("currentIndex") == 2
+    engine.deleteLater()
+
+
+def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
+    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    pr_number_input = window.findChild(QObject, "feedbackPrNumberInput")
+    load_pr_button = window.findChild(QObject, "feedbackLoadPrButton")
+    assert pr_number_input is not None
+    assert load_pr_button is not None
+
+    pr_number_input.setProperty("text", "43")
+    load_pr_button.click()
+    application.processEvents()
+
+    assert status_view_model.pr_number == 43
+    assert status_view_model.current_sha == "sha-43-ready"
+    assert window.findChild(QObject, "feedbackHeadShaInput").property("text") == "sha-43-ready"
+    assert queue_view_model.items[0]["pr_number"] == 42
     engine.deleteLater()
 
 

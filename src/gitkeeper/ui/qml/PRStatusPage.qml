@@ -1,10 +1,12 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 
 Item {
     id: root
 
     property var statusViewModel
+    property var queueViewModel
 
     ColumnLayout {
         anchors.fill: parent
@@ -94,6 +96,125 @@ Item {
             color: "#8b382b"
             wrapMode: Text.Wrap
             Layout.fillWidth: true
+        }
+
+        Text {
+            text: "Manual Claude CHANGES_REQUESTED feedback"
+            color: "#392820"
+            font.pixelSize: 16
+            font.weight: Font.DemiBold
+        }
+
+        Text {
+            text: "Transfer feedback yourself; GitKeeper does not access Claude."
+            textFormat: Text.PlainText
+            color: "#66564a"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            TextField {
+                id: feedbackPrNumberInput
+                objectName: "feedbackPrNumberInput"
+                Layout.fillWidth: true
+                text: root.statusViewModel
+                      ? String(root.statusViewModel.pr_number || "") : ""
+                inputMethodHints: Qt.ImhDigitsOnly
+                Accessible.name: "Pull request number for review feedback"
+                placeholderText: "Pull request number"
+            }
+
+            Button {
+                objectName: "feedbackLoadPrButton"
+                text: "Load PR"
+                Accessible.name: "Load pull request for review feedback"
+                onClicked: {
+                    var prNumber = parseInt(feedbackPrNumberInput.text, 10)
+                    if (!isNaN(prNumber) && String(prNumber) === feedbackPrNumberInput.text.trim()) {
+                        root.statusViewModel.select_pull_request(prNumber)
+                        feedbackHeadShaInput.text = root.statusViewModel.current_sha
+                        feedbackTextInput.clear()
+                        feedbackReassociateCheckBox.checked = false
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: "Current head SHA: " + (root.statusViewModel ? root.statusViewModel.current_sha || "unavailable" : "unavailable")
+            textFormat: Text.PlainText
+            color: "#66564a"
+            font.pixelSize: 12
+            Layout.fillWidth: true
+        }
+
+        TextField {
+            id: feedbackHeadShaInput
+            objectName: "feedbackHeadShaInput"
+            Layout.fillWidth: true
+            text: root.statusViewModel ? root.statusViewModel.current_sha : ""
+            Accessible.name: "SHA reviewed by Claude"
+            placeholderText: "Head SHA reviewed by Claude"
+        }
+
+        CheckBox {
+            id: feedbackReassociateCheckBox
+            objectName: "feedbackReassociateCheckBox"
+            text: "Re-associate with the current head SHA"
+            enabled: root.statusViewModel
+                     && feedbackHeadShaInput.text !== root.statusViewModel.current_sha
+            Accessible.name: text
+        }
+
+        TextArea {
+            id: feedbackTextInput
+            objectName: "feedbackTextInput"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 72
+            wrapMode: TextArea.Wrap
+            Accessible.name: "Manually transferred Claude review feedback"
+            placeholderText: "Paste the CHANGES_REQUESTED feedback here"
+        }
+
+        Text {
+            objectName: "feedbackPreviewText"
+            text: "Preview: " + feedbackTextInput.text
+            textFormat: Text.PlainText
+            color: "#66564a"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            visible: root.statusViewModel && root.statusViewModel.feedback_error !== ""
+            text: root.statusViewModel ? root.statusViewModel.feedback_error : ""
+            textFormat: Text.PlainText
+            color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Button {
+            objectName: "feedbackSubmitButton"
+            text: "Submit repair feedback"
+            Accessible.name: "Submit manually transferred review feedback"
+            enabled: root.statusViewModel
+                     && feedbackTextInput.text.trim() !== ""
+                     && feedbackHeadShaInput.text !== ""
+            onClicked: {
+                var submitted = root.statusViewModel.submit_review_feedback(
+                            feedbackTextInput.text,
+                            feedbackHeadShaInput.text,
+                            feedbackReassociateCheckBox.checked)
+                if (submitted) {
+                    feedbackTextInput.clear()
+                    feedbackHeadShaInput.text = root.statusViewModel.current_sha
+                    feedbackReassociateCheckBox.checked = false
+                }
+            }
         }
     }
 }
