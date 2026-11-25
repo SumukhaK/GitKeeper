@@ -13,11 +13,12 @@ happens on the owner's Windows machine.
 > The design contract, the desktop UI foundation, typed host-mode readiness, the
 > local model ladder, the patch-scope gate, the one-shot command approval broker,
 > and OpenCode command mediation are implemented and tested. Queue domain
-> contracts are implemented, but SQLite persistence, GitHub reconciliation, and
-> the worktree lifecycle are **not** implemented, so worker execution stays
-> disabled on purpose. Slice 1 is merged from
+> contracts and SQLite queue persistence are implemented, but GitHub
+> reconciliation and the worktree lifecycle are **not** implemented, so worker
+> execution stays disabled on purpose. Slice 1 is merged from
 > [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15) at
-> `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 persistence is in progress.
+> `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 persistence is implemented
+> at `091507a` and awaiting independent review.
 
 ## What works today
 
@@ -32,8 +33,8 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 merged in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15); Slice 2 in progress; slices 3–7 pending |
-| Queue, leases, GitHub label reconciliation, worktrees | Queue domain contracts implemented; persistence, leases, reconciliation, and worktrees not implemented; no queue code merged |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 merged in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15); Slice 2 implemented and under review; slices 3–7 pending |
+| Queue, leases, GitHub label reconciliation, worktrees | Domain contracts and SQLite persistence/lease/cycle/attempt storage implemented; GitHub reconciliation and worktrees not implemented; Slice 2 code not merged |
 | Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — merged plan; implementation pending |
 
 ## Queue implementation status
@@ -44,7 +45,7 @@ The active scope is the [queue persistence and reconciliation plan](docs/superpo
 | --- | --- | --- | --- | --- |
 | P0 | Publish plan, status tracking, and README/handover correction | merged | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | `45a16255e694c372f1b970ad532a72d352c8d3a0` |
 | 1 | Domain contracts and readiness-reason adapter | merged | [#15](https://github.com/SumukhaK/GitKeeper/pull/15) | `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47` |
-| 2 | SQLite queue/cycle/lease persistence | in progress | — | — |
+| 2 | SQLite queue/cycle/lease persistence | implemented at `091507a`; 259 focused + 624 full-suite tests pass; independent review pending | — | — |
 | 3 | Operational-only telemetry persistence | pending | — | — |
 | 4 | GitHub read/config/label REST adapter | pending | — | — |
 | 5 | Queue service and label/budget transitions | pending | — | — |
@@ -75,8 +76,9 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (564 tests) |
+| `py -m pytest -q` | Full suite (624 tests) |
 | `py -m pytest tests/test_queue_models.py tests/host_mode/test_readiness.py -q` | Queue domain contracts and readiness regressions (221 tests) |
+| `py -m pytest tests/test_queue_models.py tests/test_queue_store.py -q` | Queue domain and SQLite persistence contracts (259 tests) |
 | `py -m pytest tests/host_mode -q` | Typed readiness blockers, the approval broker, and OpenCode mediation |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |
