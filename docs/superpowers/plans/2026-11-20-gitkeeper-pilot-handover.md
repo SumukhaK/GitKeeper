@@ -6,8 +6,8 @@
 ## Current state
 
 - The approved architecture and scope are in [the pilot design spec](../specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md).
-- GitKeeper implementation work is on branch `sumukhak-gitkeeper-pilot-design`. The original design-only PR, [GitKeeper #1](https://github.com/SumukhaK/GitKeeper/pull/1), is merged; it did not include the implementation work described here.
-- A separate GitKeeper implementation PR is being prepared from the changes after `6af9283`. Update this tracker with its number, URL, merge commit, and final verification before handing the work off.
+- The original design-only PR, [GitKeeper #1](https://github.com/SumukhaK/GitKeeper/pull/1), is merged; it contained only the design spec.
+- The GitKeeper implementation slice is merged: [GitKeeper #2](https://github.com/SumukhaK/GitKeeper/pull/2), merge commit `d7ea534e04bf9b641ce040da2c4cff660baabce9` on `main`, from branch `sumukhak-gitkeeper-pilot-design`. It adds the companion UI foundation, the fail-closed worker/config gate, and this tracker. Treat `main` as the source of truth; branch tips may drift.
 - Setu-mobile Actions/config implementation is in [Setu-mobile #19](https://github.com/SumukhaK/Setu-mobile/pull/19), head `a153271a18241b3cf5b9d5ed7025916c6b11e9f8`. Its `Android CI` and `GitGuardian Security Checks` passed on that head; the PR is open and unmerged.
 - **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch.
 
@@ -33,6 +33,7 @@
 - After the fixes, the focused UI tests passed: `py -m pytest tests/ui/test_config_publisher.py tests/ui/test_settings_viewmodel.py tests/ui/test_app.py tests/ui/test_qml_accessibility.py -q` — 28 passed.
 - Full current suite: `py -m pytest -q` — 77 passed. `git diff --check` passed.
 - Worker enablement is deliberately rejected by both the view model and config publisher until a future implementation proves companion-mediated OpenCode command approval. This slice does not implement that broker or authorize worker execution.
+- This slice is merged as [GitKeeper #2](https://github.com/SumukhaK/GitKeeper/pull/2) at merge commit `d7ea534e04bf9b641ce040da2c4cff660baabce9`. The checks above ran on the pre-merge head; `main` is authoritative from here on, and nothing in this slice authorizes a worker launch.
 
 ## Approved decisions that must not be re-litigated
 
