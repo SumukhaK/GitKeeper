@@ -18,13 +18,17 @@ class SettingsViewModel(QObject):
         publisher,
         *,
         initial_settings: CompanionSettings | None = None,
-        isolation_verified: bool = False,
+        opencode_model_id: str | None = None,
     ) -> None:
         super().__init__()
         self._publisher = publisher
-        self._isolation_verified = isolation_verified
         self._draft_settings = initial_settings or CompanionSettings()
         self._merged_settings = self._draft_settings
+        if opencode_model_id is not None and not self._is_opencode_model_id(
+            opencode_model_id
+        ):
+            raise ValueError("The selected model must use the opencode/ provider.")
+        self._opencode_model_id = opencode_model_id
         self._pending_settings: CompanionSettings | None = None
         self._config_pr: ConfigPullRequest | None = None
         self._validation_message = ""
@@ -36,11 +40,11 @@ class SettingsViewModel(QObject):
 
     @Property(bool, notify=changed)
     def can_enable_worker(self) -> bool:
-        return self._isolation_verified
+        return False
 
     @Property(str, notify=changed)
     def opencode_model_id(self) -> str:
-        return self._draft_settings.opencode_model_id or ""
+        return self._opencode_model_id or ""
 
     @Property(str, notify=changed)
     def polling_mode(self) -> str:
@@ -86,9 +90,13 @@ class SettingsViewModel(QObject):
 
     @Slot(str)
     def set_opencode_model_id(self, model_id: str) -> None:
-        self._draft_settings = replace(
-            self._draft_settings, opencode_model_id=model_id or None
-        )
+        if model_id and not self._is_opencode_model_id(model_id):
+            self._validation_message = (
+                "opencode_model_id: Select an exact model ID using the opencode/ provider."
+            )
+            self.changed.emit()
+            return
+        self._opencode_model_id = model_id or None
         self._clear_messages()
         self.changed.emit()
 
@@ -103,9 +111,9 @@ class SettingsViewModel(QObject):
     @Slot(result=bool)
     def publish(self) -> bool:
         self._clear_messages()
-        if self._draft_settings.worker_enabled and not self._isolation_verified:
+        if self._draft_settings.worker_enabled:
             self._validation_message = (
-                "worker_enabled: Worker execution remains disabled until isolation is verified."
+                "worker_enabled: Worker execution remains disabled until OpenCode command mediation is verified through the companion."
             )
             self.changed.emit()
             return False
@@ -147,8 +155,22 @@ class SettingsViewModel(QObject):
         return True
 
     def _apply_pr_status(self, pull_request: ConfigPullRequest) -> None:
-        if pull_request.state == "merged" and self._pending_settings is not None:
+        if (
+            pull_request.state == "merged"
+            and pull_request.validation_status == "valid"
+            and pull_request.merge_status == "merged"
+            and self._pending_settings is not None
+        ):
             self._merged_settings = self._pending_settings
+
+    @staticmethod
+    def _is_opencode_model_id(model_id: str) -> bool:
+        return (
+            model_id.startswith("opencode/")
+            and len(model_id) > len("opencode/")
+            and model_id.strip() == model_id
+            and not any(character.isspace() for character in model_id)
+        )
 
     def _clear_messages(self) -> None:
         self._validation_message = ""

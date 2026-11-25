@@ -18,6 +18,7 @@ def build_report(
     probe_names: tuple[str, ...] = HOST_PROBE_NAMES,
     model_configured: bool = True,
     opencode_succeeded: bool = True,
+    evidence_paths: list[Path] | None = None,
 ):
     from gitkeeper.isolation.report import IsolationReport, ProbeResult
 
@@ -41,14 +42,16 @@ def build_report(
         ),
         opencode_model_configured=model_configured,
         opencode_call_succeeded=opencode_succeeded,
-        evidence_paths=[Path("evidence/summary.json")],
+        evidence_paths=evidence_paths or [Path("evidence/summary.json")],
     )
 
 
-def test_complete_report_returns_go():
+def test_complete_report_returns_go(tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 
-    report = build_report()
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(evidence_paths=[evidence])
 
     assert isolation_passes(report) is True
     assert report.verdict == "GO"
@@ -65,37 +68,51 @@ def test_complete_report_returns_go():
         "credential_exposure",
     ],
 )
-def test_failed_boundary_probe_returns_no_go(failed_probe):
+def test_failed_boundary_probe_returns_no_go(failed_probe, tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 
-    report = build_report(failed_probe=failed_probe)
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(
+        failed_probe=failed_probe,
+        evidence_paths=[evidence],
+    )
 
     assert isolation_passes(report) is False
     assert report.verdict == "NO_GO"
 
 
-def test_missing_host_probe_returns_no_go():
+def test_missing_host_probe_returns_no_go(tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 
-    report = build_report(probe_names=HOST_PROBE_NAMES[:-1])
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(
+        probe_names=HOST_PROBE_NAMES[:-1],
+        evidence_paths=[evidence],
+    )
 
     assert isolation_passes(report) is False
     assert report.verdict == "NO_GO"
 
 
-def test_unconfigured_model_cannot_return_go():
+def test_unconfigured_model_cannot_return_go(tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 
-    report = build_report(model_configured=False)
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(model_configured=False, evidence_paths=[evidence])
 
     assert isolation_passes(report) is False
     assert report.verdict == "NO_GO"
 
 
-def test_failed_opencode_call_cannot_return_go():
+def test_failed_opencode_call_cannot_return_go(tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 
-    report = build_report(opencode_succeeded=False)
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(opencode_succeeded=False, evidence_paths=[evidence])
 
     assert isolation_passes(report) is False
     assert report.verdict == "NO_GO"

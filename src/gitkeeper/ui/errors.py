@@ -15,6 +15,11 @@ _ERROR_MESSAGES: dict[str, dict[ErrorCategory, str]] = {
         "local_persistence": "Local queue data is unavailable; worker controls are disabled.",
         "unknown": "The queue could not refresh; showing the last known state.",
     },
+    "feedback": {
+        "remote_connectivity": "GitHub is offline; Claude feedback was not submitted.",
+        "local_persistence": "Local queue data is unavailable; Claude feedback was not submitted.",
+        "unknown": "Claude feedback could not be submitted; no repair was queued.",
+    },
 }
 
 
@@ -25,7 +30,7 @@ class QueueServiceError(Exception):
         self.category = category
         super().__init__(category)
 
-    def user_message(self, context: Literal["status", "queue"]) -> str:
+    def user_message(self, context: Literal["status", "queue", "feedback"]) -> str:
         return _ERROR_MESSAGES[context][self.category]
 
 

@@ -106,7 +106,34 @@ class StatusViewModel(QObject):
             self._feedback_error = "Select a pull request before submitting feedback."
             self.changed.emit()
             return False
-        if self._is_stale or not self.current_sha:
+        if not feedback.strip():
+            self._feedback_error = "Enter the review feedback to submit."
+            self.changed.emit()
+            return False
+
+        try:
+            item = self._queue_service.get_item(self._pr_number)
+        except QueueServiceError as error:
+            self._is_stale = True
+            self._error_message = error.user_message("status")
+            self._feedback_error = error.user_message("feedback")
+            self.changed.emit()
+            return False
+
+        if item is None:
+            self._is_stale = True
+            self._error_message = "The selected pull request is unavailable."
+            self._feedback_error = (
+                "The selected pull request could not be refreshed; feedback was not submitted."
+            )
+            self.changed.emit()
+            return False
+
+        self._item = item
+        self._is_stale = False
+        self._error_message = None
+        current_sha = self.current_sha
+        if not current_sha:
             self._feedback_error = (
                 "Refresh the pull request status before submitting feedback."
             )
@@ -118,12 +145,6 @@ class StatusViewModel(QObject):
             )
             self.changed.emit()
             return False
-        if not feedback.strip():
-            self._feedback_error = "Enter the review feedback to submit."
-            self.changed.emit()
-            return False
-
-        current_sha = self.current_sha
         if associated_head_sha != current_sha and not reassociate:
             self._feedback_error = (
                 "The feedback SHA is outdated. Explicitly re-associate it with "
@@ -140,6 +161,8 @@ class StatusViewModel(QObject):
             )
         except QueueServiceError as error:
             self._feedback_error = error.user_message("feedback")
+            self._error_message = self._feedback_error
+            self._is_stale = True
             self.changed.emit()
             return False
 

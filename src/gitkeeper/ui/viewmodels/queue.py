@@ -1,7 +1,7 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Callable
 
-from PySide6.QtCore import Property, QObject, Signal
+from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from gitkeeper.ui.errors import QueueServiceError
 
@@ -26,7 +26,7 @@ class QueueViewModel(QObject):
         super().__init__()
         self._queue_service = queue_service
         self._items: list[Any] = []
-        self._is_stale = False
+        self._is_stale = True
         self._error_message: str | None = None
         self._is_paused = False
 
@@ -85,32 +85,108 @@ class QueueViewModel(QObject):
     def is_paused(self) -> bool:
         return self._is_paused
 
-    def refresh(self) -> None:
+    @Property(bool, notify=changed)
+    def controls_enabled(self) -> bool:
+        return not self._is_stale
+
+    def refresh(self) -> bool:
         try:
             items = self._queue_service.list_queue()
+            is_paused = self._queue_service.get_queue_status()
         except QueueServiceError as error:
             self._is_stale = True
             self._error_message = error.user_message("queue")
             self.changed.emit()
-            return
+            return False
+
+        if type(is_paused) is not bool:
+            self._is_stale = True
+            self._error_message = "Queue status is invalid; controls are disabled."
+            self.changed.emit()
+            return False
 
         self._items = list(items)
+        self._is_paused = is_paused
         self._is_stale = False
         self._error_message = None
         self.changed.emit()
+        return True
 
-    def pause(self) -> None:
-        self._queue_service.pause()
-        self._is_paused = True
+    @Slot(result=bool)
+    def pause(self) -> bool:
+        return self._run_control("pause", expected_paused=True)
+
+    @Slot(result=bool)
+    def resume(self) -> bool:
+        return self._run_control("resume", expected_paused=False)
+
+    @Slot(int, result=bool)
+    def cancel(self, pr_number: int) -> bool:
+        if not self._run_control("cancel", pr_number=pr_number):
+            return False
+        return self._confirm_item_state(
+            pr_number,
+            lambda state: state in {"blocked", "ready"},
+            "Cancellation was not confirmed by the refreshed queue.",
+        )
+
+    @Slot(int, result=bool)
+    def retry(self, pr_number: int) -> bool:
+        if not self._run_control("retry", pr_number=pr_number):
+            return False
+        return self._confirm_item_state(
+            pr_number,
+            lambda state: state == "queued",
+            "Retry was not confirmed by the refreshed queue.",
+        )
+
+    def _run_control(
+        self,
+        action: str,
+        *,
+        pr_number: int | None = None,
+        expected_paused: bool | None = None,
+    ) -> bool:
+        if self._is_stale:
+            self._error_message = "Refresh the queue before using worker controls."
+            self.changed.emit()
+            return False
+        try:
+            if pr_number is None:
+                getattr(self._queue_service, action)()
+            else:
+                getattr(self._queue_service, action)(pr_number)
+        except QueueServiceError as error:
+            self._is_stale = True
+            self._error_message = error.user_message("queue")
+            self.changed.emit()
+            return False
+
+        if not self.refresh():
+            return False
+        if expected_paused is not None and self._is_paused != expected_paused:
+            self._error_message = "Queue status did not confirm the requested action."
+            self.changed.emit()
+            return False
+        return True
+
+    def _confirm_item_state(
+        self,
+        pr_number: int,
+        predicate: Callable[[str | None], bool],
+        failure_message: str,
+    ) -> bool:
+        item = next(
+            (
+                item
+                for item in self._items
+                if self._value(item, "pr_number") == pr_number
+            ),
+            None,
+        )
+        state = self._enum_value(self._value(item, "state"), _WORKER_STATES)
+        if item is not None and predicate(state):
+            return True
+        self._error_message = failure_message
         self.changed.emit()
-
-    def resume(self) -> None:
-        self._queue_service.resume()
-        self._is_paused = False
-        self.changed.emit()
-
-    def cancel(self, pr_number: int) -> None:
-        self._queue_service.cancel(pr_number)
-
-    def retry(self, pr_number: int) -> None:
-        self._queue_service.retry(pr_number)
+        return False

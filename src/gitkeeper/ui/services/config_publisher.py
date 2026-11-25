@@ -1,13 +1,12 @@
 import json
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
 
 @dataclass(frozen=True)
 class CompanionSettings:
     worker_enabled: bool = False
-    opencode_model_id: str | None = None
     polling_preferences: Mapping[str, str] = field(
         default_factory=lambda: {"mode": "adaptive"}
     )
@@ -57,7 +56,6 @@ class ConfigPRClient(Protocol):
 
 _SETTING_FIELDS = {
     "worker_enabled",
-    "opencode_model_id",
     "polling_preferences",
     "motion_preference",
 }
@@ -92,14 +90,6 @@ def validate_settings(
     if "worker_enabled" in values and type(values["worker_enabled"]) is not bool:
         errors.append(FieldError("worker_enabled", "Must be true or false."))
 
-    model_id = values.get("opencode_model_id")
-    if model_id is not None and (
-        not isinstance(model_id, str) or not model_id.strip()
-    ):
-        errors.append(
-            FieldError("opencode_model_id", "Select an OpenCode model ID or leave it unset.")
-        )
-
     polling = values.get("polling_preferences")
     if not isinstance(polling, Mapping) or dict(polling) != {"mode": "adaptive"}:
         errors.append(
@@ -124,14 +114,8 @@ def validate_settings(
 
 
 class ConfigPublisher:
-    def __init__(
-        self,
-        client: ConfigPRClient,
-        *,
-        isolation_verified: bool = False,
-    ) -> None:
+    def __init__(self, client: ConfigPRClient) -> None:
         self._client = client
-        self._isolation_verified = isolation_verified
 
     def publish_settings(
         self, settings: CompanionSettings | Mapping[str, object]
@@ -141,12 +125,12 @@ class ConfigPublisher:
             raise InvalidSettingsError(errors)
 
         values = _settings_mapping(settings)
-        if values["worker_enabled"] is True and not self._isolation_verified:
+        if values["worker_enabled"] is True:
             raise InvalidSettingsError(
                 [
                     FieldError(
                         "worker_enabled",
-                        "Worker execution remains disabled until isolation is verified.",
+                        "Worker execution remains disabled until OpenCode command mediation is verified through the companion.",
                     )
                 ]
             )
@@ -158,9 +142,15 @@ class ConfigPublisher:
             raise ConfigPublicationError(
                 "The merged configuration could not be validated."
             )
+        default_config_errors = validate_settings(default_config)
+        if default_config_errors:
+            raise InvalidSettingsError(default_config_errors)
 
         updated_config = dict(default_config)
         updated_config.update(values)
+        updated_config_errors = validate_settings(updated_config)
+        if updated_config_errors:
+            raise InvalidSettingsError(updated_config_errors)
         config_contents = json.dumps(
             updated_config, indent=2, sort_keys=True
         ) + "\n"

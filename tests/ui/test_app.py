@@ -1,4 +1,11 @@
+import inspect
 from types import SimpleNamespace
+
+
+def test_app_composition_does_not_accept_historical_isolation_reports():
+    from gitkeeper.ui import app
+
+    assert "isolation_report" not in inspect.signature(app.main).parameters
 
 
 def test_create_viewmodels_displays_existing_queue_without_starting_worker():

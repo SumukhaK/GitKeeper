@@ -31,11 +31,20 @@ Item {
         }
 
         Text {
+            objectName: "settingsWorkerGateText"
             visible: root.settingsViewModel
                      && !root.settingsViewModel.can_enable_worker
-            text: "Worker execution is locked until Windows isolation is verified."
+            text: "Host mode is accepted risk, not OS isolation. Worker execution stays locked until OpenCode command mediation is proven through the companion."
             textFormat: Text.PlainText
             color: "#8b382b"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
+        Text {
+            text: "The OpenCode model ID is local to this companion and is never included in the config PR."
+            textFormat: Text.PlainText
+            color: "#66564a"
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }

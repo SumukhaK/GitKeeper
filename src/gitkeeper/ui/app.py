@@ -28,15 +28,12 @@ def main(
     queue_service: Any,
     argv: Sequence[str] | None = None,
     config_publisher: Any = None,
-    isolation_verified: bool = False,
     telemetry_service: Any = None,
 ) -> int:
     QQuickStyle.setStyle("Basic")
     application = QGuiApplication(list(argv) if argv is not None else sys.argv)
     status_view_model, queue_view_model = create_viewmodels(queue_service)
-    settings_view_model = SettingsViewModel(
-        config_publisher, isolation_verified=isolation_verified
-    )
+    settings_view_model = SettingsViewModel(config_publisher)
     telemetry_view_model = TelemetryViewModel(telemetry_service)
     if telemetry_service is not None:
         telemetry_view_model.refresh()
