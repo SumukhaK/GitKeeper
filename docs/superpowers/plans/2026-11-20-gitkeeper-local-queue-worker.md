@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md`
 
+## Execution status
+
+The active queue/persistence/reconciliation scope is divided into independently reviewed slices in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 is in `review` with PR pending; no queue code is merged.
+
+| Original task | Detailed slices | Status | PR | Merge commit |
+| --- | --- | --- | --- | --- |
+| Task 1 | 1–3 | pending | — | — |
+| Task 2 | 4–7 | pending | — | — |
+
+Original Tasks 1–2 remain unchecked until all mapped slices have merged code and clean review/test evidence. Tasks 3–5 remain out of scope and unchecked; worker execution stays disabled, with no worktree, OpenCode launch, publication, UI/settings integration, workflow, or Setu-mobile changes authorized.
+
 ## Global Constraints
 
 - GitKeeper application, companion, and worker code belong only in the private GitKeeper repository. Setu-mobile receives only the GitHub Actions integration and its configuration.
