@@ -16,13 +16,13 @@
 | Area | Status | Evidence / remaining work |
 |---|---|---|
 | Pilot architecture and boundaries | Complete | The accepted spec defines GitHub Actions, local companion/worker responsibilities, trusted/untrusted boundaries, state transitions, telemetry, and pilot acceptance criteria. |
-| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, and focused tests. Current working-tree verification: `py -m pytest -q` — 77 passed. Real queue/worker and host-readiness wiring is still pending. |
+| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, and focused tests. Current working-tree verification: `py -m pytest -q` — 181 passed. Real queue/worker and host-readiness wiring is still pending. |
 | Setu-mobile Actions/config | Implemented; remote runtime partly verified | PR #19 contains strict config validation, secret-free PR CI, and a default-branch state classifier/label writer. Both current PR checks pass. The state workflow's label behavior and fork-PR runtime behavior still need live verification after the workflow is on the default branch. Do not merge this PR without the owner's review/authorization. |
 | Accepted Windows host mode | Decision accepted; fail-closed UI gate in progress | The owner accepted direct execution on their Windows 10 Home account and waived VM/WSL2/Sandbox and separate-user boundaries. Config publication now rejects `worker_enabled: true` until OpenCode command mediation is proven; the historical isolation report is no longer an authorization input. Typed readiness, repository allowlist, broker, and end-to-end tests remain pending. Never call this isolation or a sandbox. |
 | OpenCode command mediation | Not proven; blocking | The installed CLI is OpenCode `1.19.6`. `opencode run` is not an acceptable approval path: it rejects permission requests by default, while `--auto` auto-approves them. A companion-owned `opencode serve` permission-event/reply path is only a candidate until it is exercised through the UI and shown to fail closed. |
 | Local queue and worker | Not implemented | Build SQLite-backed leases/telemetry, GitHub reconciliation, label-state transitions, per-PR/SHA worktrees, cancellation, stale-head handling, and the three-invocation budget per open/reopen cycle. Keep stale worktrees for user recovery. |
-| Worker publication | Blocked on owner policy | The owner has not supplied a machine-checkable patch-scope rule. Do not infer one from prompts or changed paths. Publication must fail closed until the rule is defined and tested; retain exact starting-SHA checks and fast-forward-only publication to the existing PR branch. |
-| Local OpenCode model policy | Partial; persistence and exact local policy pending | The model field is now local to the companion, rejects non-`opencode/` IDs, and is omitted from remote config PRs. The selected ID is currently in-memory only; wire it to an owner-controlled exact allowlist/persistence before worker launch. Do not guess IDs or permit other providers. |
+| Worker publication | Policy resolved; enforcement implemented | The owner delegated and approved a machine-checkable patch-scope rule, now recorded in the spec section "Patch scope rule for publication" and enforced by `src/gitkeeper/policy/patch_scope.py`. It fails closed with enumerated reason codes: worktree identity, 10 files / 400 total lines / 150 per-file limits, no deletions/renames/submodules/symlinks/binary/mode changes, allowlisted paths with a denylist that wins, a manifest capability rule, test-change and secret-scan intent checks, then a remote re-query before a fast-forward-only push. The thresholds are code constants so a config PR cannot widen them. Still missing: the git adapter that builds these decisions from a real worktree, and the control-plane commit/push step. |
+| Local OpenCode model policy | Policy resolved; persistence implemented | The owner supplied the ladder: default `opencode/deepseek-v4.1-flash-free`, then `opencode/glm-5.3`, `opencode/glm-5.3-flash`, `opencode/hy4-flash-free`, `opencode/deepseek-v4-pro`. `src/gitkeeper/policy/models.py` holds the ladder, validates every ID, persists it atomically to `%LOCALAPPDATA%\GitKeeper\models.json` (outside both repositories), and classifies quota/rate-limit output as `model-unavailable` without consuming the invocation budget. The settings panel exposes the ladder, the active ID, and the next-entry suggestion; switching is owner-confirmed only. Still missing: the launch path that reads this policy and the `models.json` bootstrap on a fresh host. |
 | GitHub credential provider | Undecided | Use an injected least-privilege GitHub service. Do not invent a token location or expose credentials to QML. In accepted host mode, credentials accessible to the logged-in user may also be accessible to OpenCode or its child processes. |
 | End-to-end/manual verification | Pending | Verify UI behavior on Windows, command approval/denial/replay, worktree invariants, GitHub label transitions, config PR publication, and Actions behavior. Do not run Android Gradle checks locally; GitHub Actions is the test gate. |
 
@@ -35,12 +35,39 @@
 - Worker enablement is deliberately rejected by both the view model and config publisher until a future implementation proves companion-mediated OpenCode command approval. This slice does not implement that broker or authorize worker execution.
 - This slice is merged as [GitKeeper #2](https://github.com/SumukhaK/GitKeeper/pull/2) at merge commit `d7ea534e04bf9b641ce040da2c4cff660baabce9`. The checks above ran on the pre-merge head; `main` is authoritative from here on, and nothing in this slice authorizes a worker launch.
 
+## Model policy and patch-scope slice verification
+
+- Tests were written first and observed failing before either module existed:
+  `ModuleNotFoundError: No module named 'gitkeeper.policy'` for `tests/policy/`, and ladder
+  assertions failing against the previous in-memory model field in
+  `tests/ui/test_settings_viewmodel.py`.
+- `tests/policy/test_models.py` (19 tests) covers ladder construction, exact-ID validation,
+  non-`opencode/` rejection, duplicate and empty ladders, unknown/missing/unparseable policy
+  files, `next_after` at the end of the ladder, and quota classification that never consumes
+  the repair budget.
+- `tests/policy/test_patch_scope.py` covers one case per reason code plus the exact 10-file,
+  400-line, and 150-per-file boundaries, malformed paths, denylist precedence over the
+  allowlist, and that the thresholds are not constructor-configurable.
+- `tests/policy/test_manifest_scope.py` allows an attribute-value edit and rejects new
+  permissions, new components, an added `<intent-filter>`, `android:exported`,
+  `usesCleartextTraffic`, `debuggable`, `allowBackup`, and unparseable manifests.
+- `tests/ui/test_settings_viewmodel.py` and `tests/ui/test_qml_accessibility.py` cover ladder
+  exposure, owner-confirmed switching, rejection of off-ladder and other-provider IDs, the
+  suggestion text, and that `can_enable_worker` stays `False`.
+- `README.md` documents the current state, commands, the two code-enforced policy gates, the
+  repository layout, and a reading order for the next contributor, so the repository is
+  self-explanatory without this tracker.
+- Full current suite: `py -m pytest -q` — 181 passed.
+- Still unproven: the git adapter that builds scope decisions from a real worktree, and the
+  control-plane commit/push path. No worker may launch until OpenCode command mediation is
+  proven; this slice adds policy only.
+
 ## Approved decisions that must not be re-litigated
 
 1. GitKeeper application, companion, and worker code stay in private `SumukhaK/GitKeeper`. Setu-mobile receives only the Actions integration and its config.
 2. Setu-mobile is public. PR code is untrusted: use `pull_request`, not `pull_request_target`; CI is secret-free/read-only; a label-writing job must not check out, download, or execute PR-controlled content.
 3. Only owner-allowlisted repositories and PRs authored by `SumukhaK` are worker-eligible. Forks/external PRs receive CI only.
-4. OpenCode is the first worker CLI. The exact model ID is a local user-selectable setting; only exact `opencode/...` subscription IDs are allowed.
+4. OpenCode is the first worker CLI. Only exact `opencode/...` subscription IDs on the local ladder are allowed; the ladder and active ID are local settings and never published. Quota exhaustion blocks the PR as `model-unavailable` and only the owner switches models - never an automatic fallback.
 5. Each PR/SHA gets its own Git worktree so the active working tree is not overwritten. This is repository-state hygiene, not a host security boundary.
 6. Every worker-requested host shell command requires fresh, explicit desktop approval bound to the complete command/script, working directory, repository, PR/head SHA, purpose, and environment variable names. Any mismatch, timeout, UI disconnect, or incomplete display denies execution.
 7. GitHub is authoritative for remote PR/queue state. SQLite state and telemetry live outside both repositories. Telemetry stores operational metadata only, defaults to 90-day retention, and never drives automatic self-modification.
@@ -51,11 +78,11 @@
 
 Follow the detailed task lists in the linked plans, in this order:
 
-1. **Host readiness and local policy:** implement typed readiness that distinguishes accepted risk from readiness. Enforce exact repository and model allowlists, same-repository head, exact author, open/non-draft state, merged config, current SHA, attempt budget, CLI version, and broker capability.
+1. **Host readiness and local policy:** implement typed readiness that distinguishes accepted risk from readiness. Use the now-resolved model ladder (`gitkeeper.policy.models`) and the resolved patch-scope rule (`gitkeeper.policy.patch_scope`). Enforce the exact repository allowlist, ladder membership, same-repository head, exact author, open/non-draft state, merged config, current SHA, attempt budget, CLI version, and broker capability.
 2. **Approval broker and UI:** add immutable request display and one-use approve/deny handling. Deny by default on timeout, disconnect, stale PR/SHA, request changes, replay, or incomplete rendering.
 3. **OpenCode capability proof:** test the exact installed `1.19.6` path with the companion UI in a disposable non-repository directory. Verify approval, denial, request mutation, and bypass resistance. If any shell path can bypass approval, record `UNSUPPORTED`/NO-GO and keep worker launch disabled.
 4. **Queue/worker:** implement SQLite leases and recovery, GitHub polling/reconciliation, label states, per-PR/SHA worktrees, stale-head/close cancellation, bounded attempts, and explicit retry. Preserve worktrees on crash/rate-limit/escalation.
-5. **Publication policy:** ask the owner to define the machine-checkable patch-scope rule. Until then, do not publish worker changes. Once defined, enforce it alongside exact remote-head matching and fast-forward-only push to the existing PR branch.
+5. **Publication policy:** the rule is defined and enforced by `PatchScopePolicy`. Build the git adapter that feeds it (staged raw/numstat diff, both blob revisions, unstaged/untracked detection), then the control-plane commit and fast-forward-only push to the existing PR branch. On any violation, preserve the worktree, block, and require explicit retry.
 6. **Companion integration:** wire real services into the existing UI, retain accessible/reduced-motion behavior, and surface blocked/error state without false success.
 7. **Verification:** run focused tests during each slice, then `py -m pytest -q`; run `node --test` and `actionlint` in the Setu-mobile repository as appropriate. Verify GitHub event/label behavior and manually exercise the UI on Windows. Do not claim end-to-end completion until those checks pass.
 

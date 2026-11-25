@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
+from gitkeeper.policy.models import ModelLadder
 from gitkeeper.ui.services.config_publisher import (
     CompanionSettings,
     ConfigPublicationError,
@@ -18,17 +19,15 @@ class SettingsViewModel(QObject):
         publisher,
         *,
         initial_settings: CompanionSettings | None = None,
-        opencode_model_id: str | None = None,
+        model_ladder: ModelLadder | None = None,
     ) -> None:
         super().__init__()
         self._publisher = publisher
         self._draft_settings = initial_settings or CompanionSettings()
         self._merged_settings = self._draft_settings
-        if opencode_model_id is not None and not self._is_opencode_model_id(
-            opencode_model_id
-        ):
-            raise ValueError("The selected model must use the opencode/ provider.")
-        self._opencode_model_id = opencode_model_id
+        if model_ladder is not None and not isinstance(model_ladder, ModelLadder):
+            raise TypeError("model_ladder must be a ModelLadder or None.")
+        self._model_ladder = model_ladder
         self._pending_settings: CompanionSettings | None = None
         self._config_pr: ConfigPullRequest | None = None
         self._validation_message = ""
@@ -44,7 +43,17 @@ class SettingsViewModel(QObject):
 
     @Property(str, notify=changed)
     def opencode_model_id(self) -> str:
-        return self._opencode_model_id or ""
+        return self._model_ladder.active if self._model_ladder else ""
+
+    @Property("QVariantList", notify=changed)
+    def available_models(self) -> list[str]:
+        return list(self._model_ladder.entries) if self._model_ladder else []
+
+    @Property(str, notify=changed)
+    def next_model_suggestion(self) -> str:
+        if self._model_ladder is None:
+            return ""
+        return self._model_ladder.next_after(self._model_ladder.active) or ""
 
     @Property(str, notify=changed)
     def polling_mode(self) -> str:
@@ -90,14 +99,21 @@ class SettingsViewModel(QObject):
 
     @Slot(str)
     def set_opencode_model_id(self, model_id: str) -> None:
-        if model_id and not self._is_opencode_model_id(model_id):
-            self._validation_message = (
-                "opencode_model_id: Select an exact model ID using the opencode/ provider."
-            )
+        self._select_model(model_id)
+
+    @Slot(str)
+    def use_model(self, model_id: str) -> None:
+        self._select_model(model_id)
+
+    def _select_model(self, model_id: str) -> None:
+        if self._model_ladder is not None and model_id in self._model_ladder.entries:
+            self._model_ladder = self._model_ladder.with_active(model_id)
+            self._clear_messages()
             self.changed.emit()
             return
-        self._opencode_model_id = model_id or None
-        self._clear_messages()
+        self._validation_message = (
+            "opencode_model_id: Select a model from the local opencode/ model ladder."
+        )
         self.changed.emit()
 
     @Slot(str)
@@ -162,15 +178,6 @@ class SettingsViewModel(QObject):
             and self._pending_settings is not None
         ):
             self._merged_settings = self._pending_settings
-
-    @staticmethod
-    def _is_opencode_model_id(model_id: str) -> bool:
-        return (
-            model_id.startswith("opencode/")
-            and len(model_id) > len("opencode/")
-            and model_id.strip() == model_id
-            and not any(character.isspace() for character in model_id)
-        )
 
     def _clear_messages(self) -> None:
         self._validation_message = ""

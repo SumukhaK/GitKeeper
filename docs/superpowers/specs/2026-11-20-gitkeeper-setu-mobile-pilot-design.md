@@ -111,11 +111,11 @@ Worker readiness requires all of the following local checks:
 
 - The target base repository matches an explicit owner-managed allowlist entry. The pilot entry `SumukhaK/Setu-mobile` is a documented public-repository exception; any other entry must be verified private and owner-controlled before it is added. A PR head must come from the same repository; forks and external PRs are never eligible.
 - The PR author is exactly `SumukhaK`, the PR is open/non-draft, the merged/default-branch config enables work, the current SHA has an eligible repair reason, and the cycle budget permits the invocation.
-- The selected model ID exactly matches an owner-configured OpenCode subscription allowlist entry and has the `opencode/` prefix. The allowlist is local-only, cannot be changed by a Setu-mobile config PR, and is empty until explicitly configured. No external provider or pay-as-you-go model is allowed.
+- The selected model ID exactly matches an entry in the owner's local model ladder and has the `opencode/` prefix. The ladder is local-only, cannot be changed by a Setu-mobile config PR, and contains only the owner-approved entries recorded in “OpenCode worker”. No external provider or pay-as-you-go model is allowed.
 - The companion can mediate all worker-requested shell invocations through an approval broker. Before each command runs, the UI shows the exact executable and arguments (or complete script text), working directory, repository, PR number, starting head SHA, and request purpose. Each approval authorizes one immutable request only; any change invalidates approval. Commands time out to denied, and no shell chaining, background execution, or unreviewed follow-on command inherits approval. If OpenCode can bypass this broker or the UI is unavailable, the worker stays disabled.
 - The selected OpenCode CLI is detected at startup and must satisfy the version/capability contract verified by the command-broker feasibility test. The requested pilot CLI version is `1.19.6`; the application does not silently install, upgrade, or substitute a CLI.
 
-Repository allowlists, model allowlists, ownership/privacy checks, worktree paths, and approval decisions are enforced in application code, not by prompt instructions. Even these controls cannot prevent a user-approved command or host-mode OpenCode process from reading or modifying other resources permitted to the logged-in user. That residual risk is part of the owner's acceptance.
+Repository allowlists, the model ladder, patch-scope limits, ownership/privacy checks, worktree paths, and approval decisions are enforced in application code, not by prompt instructions. Even these controls cannot prevent a user-approved command or host-mode OpenCode process from reading or modifying other resources permitted to the logged-in user. That residual risk is part of the owner's acceptance.
 
 ## Event and state model
 
@@ -161,7 +161,8 @@ When the budget is exhausted, the PR becomes blocked and requires a deliberate u
 ## Worker behavior
 
 - OpenCode CLI is the only pilot worker and runs directly on the owner's Windows 10 Home host in `ACCEPTED_HOST_MODE`. The local installation must report version `1.19.6`; the companion does not silently install, upgrade, or substitute a CLI.
-- The owner configures exact model IDs backed by their OpenCode subscription. Only IDs explicitly present in that local allowlist and matching `opencode/...` can be selected. An empty allowlist or any other provider ID prevents launch. Do not guess model IDs or publish model IDs/allowlists in Setu-mobile config PRs.
+- The owner's local model ladder is an ordered list of exact OpenCode subscription model IDs. The default active model is `opencode/deepseek-v4.1-flash-free`; the remaining entries, in order, are `opencode/glm-5.3`, `opencode/glm-5.3-flash`, `opencode/hy4-flash-free`, and `opencode/deepseek-v4-pro`. Only IDs present in that ladder can be selected. An empty ladder or any other provider ID prevents launch. The ladder lives in a local state file outside both repositories (`%LOCALAPPDATA%\GitKeeper\models.json`) and is never published in a Setu-mobile config PR.
+- Model changes are owner-confirmed only. When a launch is blocked by quota, rate limiting, or `insufficient`/`exhausted`/`429` output, the companion records `model-unavailable`, preserves the worktree, blocks the PR, and surfaces the *next* ladder entry as a suggestion. The owner clicks to switch; the worker never advances the ladder on its own. A `model-unavailable` launch does not consume the three-invocation repair budget, because it never exercised the model.
 - Use the user's OpenCode Go subscription through the user's OpenCode installation. Do not place subscription credentials in GitKeeper configuration, SQLite telemetry, PR labels, or Setu-mobile. This is not a separate-user credential boundary: OpenCode and a child process can access credentials that the logged-in user can access, and that residual risk is accepted.
 - Worker instructions include the user's branching, test-driven-development, and framework-sanity expectations and, when provided, the user's Claude `CHANGES_REQUESTED` feedback and/or deterministic failure details. Passing checks alone do not invoke the worker. Prompt instructions are behavioral guidance only, never security enforcement.
 - Claude feedback is submitted by the user in the companion and bound to the selected PR head SHA. GitKeeper has no automated Claude app/API access and does not approve, merge, or make final architectural judgments. The user returns worker changes to Claude for review through their existing manual process.
@@ -169,18 +170,78 @@ When the budget is exhausted, the PR becomes blocked and requires a deliberate u
 - Every worker-requested shell invocation is routed through the companion command broker. Before execution, the desktop UI shows the exact executable/arguments or full script, working directory, target repository, PR number, starting SHA, and request purpose. The user must approve or deny that single request. Approval is bound to the immutable request and expires; edits, environment changes, cwd changes, new commands, or a later invocation require a new confirmation. Deny by default when the companion is unavailable, the request cannot be displayed completely, or the broker cannot prove the command will execute only after approval. No chaining, background shell, or approval carry-over is allowed.
 - The broker must use a supported OpenCode CLI 1.19.6 hook/tool boundary that prevents direct shell bypass. If feasibility tests cannot demonstrate complete interception, mark host worker readiness blocked and do not launch OpenCode for repair. The owner-accepted host risk does not waive this per-command confirmation requirement.
 - The worker must not merge or approve PRs, publish configuration changes, or modify GitKeeper itself as part of the Setu-mobile task.
-- Before publishing, the companion validates the patch structure and scope against the assigned repair, then queries GitHub to confirm the PR's remote head SHA still equals the SHA given to the worker. It does not run tests locally.
+- Before publishing, the companion validates the patch structure and scope against the assigned repair, then queries GitHub to confirm the PR's remote head SHA still equals the SHA given to the worker. It does not run tests locally. The exact rule is in "Patch scope rule for publication" below, and its thresholds are code constants rather than configuration so a config PR cannot loosen them.
 - Only after both validations pass, the companion/control plane—not OpenCode—stages and commits the worker changes, then pushes the commit to that PR's existing head branch. The control-plane credential is not intentionally injected into the OpenCode process, but host mode cannot guarantee that user-accessible GitHub credentials are inaccessible to it. Pushes must be ordinary fast-forward pushes; never force-push and never push to `main`.
 - If patch structure/scope validation fails or the remote head SHA changed, do not commit or push; preserve the worktree and report a blocked/stale result for user action and reconciliation.
 - After a successful push, GitHub Actions runs `./gradlew testDebugUnitTest detekt lint` against the new PR head SHA. Passing checks leave the PR ready with no worker queued. Any deterministic CI check failure after the push enqueues another repair for that SHA if the cycle budget remains; infrastructure, cancelled, or unknown outcomes remain blocked for human action.
 - A successful invocation records its local outcome and does not trigger automatic merge or final architectural approval.
-- If OpenCode is unavailable, rate-limited, or crashes, preserve the worktree and execution record, transition to blocked, notify the user, and wait for explicit retry. There is no automatic model fallback in this pilot.
+- If OpenCode is unavailable, rate-limited, or crashes, preserve the worktree and execution record, transition to blocked, notify the user, and wait for explicit retry. There is no automatic model fallback in this pilot: the companion may only suggest the next ladder entry for an owner-confirmed switch. Quota and rate-limit output is classified as `model-unavailable` and recorded separately from a worker failure, so it does not consume the invocation budget.
 - The companion supports pause/resume and cancel-current-run controls. Pausing prevents new claims and pauses/requests a safe pause of active work; cancel signals the active worker and records the outcome. A retry is always explicit after escalation.
+
+## Patch scope rule for publication
+
+A worker result is publishable only when the pure-function check over the worktree and its
+starting SHA returns an allowed decision. Every check fails closed, and each violation carries
+an enumerated reason code so the panel can explain the block. Patches are computed from the
+staged index, so the validated patch is exactly the committed patch.
+
+Repository identity:
+
+1. The resolved worktree real path is under the managed worktree root, and is not the root itself.
+2. The worktree is not the active checkout of either repository.
+3. `HEAD` equals the starting SHA given to the worker.
+
+Patch structure:
+
+4. The patch is non-empty, with nothing left unstaged or untracked.
+5. At most 10 changed files.
+6. At most 400 changed lines in total and at most 150 changed lines in any single file.
+7. No deletions and no renames or copies.
+8. No submodule (`160000`) or symlink (`120000`) entry and no executable-bit change.
+9. No binary content, detected as a NUL byte in either revision.
+
+Paths are repository-relative with forward slashes. Absolute paths, drive letters, `..`, `~`,
+and backslashes are rejected. Comparison is NFC-normalised and case-insensitive, because the
+Windows filesystem is case-insensitive while the Git index is not.
+
+Allowed paths: `app/src/**`, `core/**/src/**`, `feature/**/src/**`, `tests/**`, `docs/**`, and
+`app/src/main/AndroidManifest.xml`.
+
+Denylisted regardless of the allowlist: `.github/**`, `scripts/**`, `gradle/**`, `gradlew`,
+`gradlew.bat`, `**/*.gradle.kts`, `gradle.properties`, `config/**`, `third_party/**`,
+`index.html`, `prototype.*`, `**/network_security_config.xml`, `**/proguard*`, `**/*.keystore`,
+`**/*.jks`, `**/*.pem`, `**/*.p12`, `.gitmodules`, and `.gitattributes`.
+
+Manifest capability rule: because the manifest is in scope, a manifest edit may only change
+values inside existing elements. Any change to the set of `<uses-permission>`, `<permission>`,
+or `<uses-feature>` elements, to a component name (`<activity>`, `<service>`, `<receiver>`,
+`<provider>`), to an added or removed `<intent-filter>`, or to `android:exported`,
+`android:usesCleartextTraffic`, `android:debuggable`, or `android:allowBackup` is rejected. A
+repair that needs a new capability is a human change.
+
+Intent:
+
+10. At least one changed path is under a module `src/` directory other than the manifest.
+11. When the repair carries deterministic CI failure detail, at least one changed path is a test path.
+12. Added lines are scanned for secret patterns (private-key headers, `AKIA`, `ghp_`,
+    `github_pat_`, `gho_`, `password=`, `api_key=`, `secret=`).
+
+Publication order:
+
+13. Only after the checks above pass, re-query GitHub and confirm the remote head still equals
+    the starting SHA, the PR is open and non-draft, the head is from the same repository, and
+    the author is `SumukhaK`.
+14. Commit from the control plane, then fast-forward push only.
+15. On any violation, do not commit, never force-push, never push to `main`, preserve the
+    worktree, mark the PR blocked, and require an explicit user retry.
+
+The 10 / 400 / 150 thresholds are code constants rather than configuration, for the same
+reason as the invocation budget: a Setu-mobile config PR must not be able to widen them.
 
 ## Configuration and publication
 
 - Configuration consumed by Actions resides in Setu-mobile and is versioned with the Actions integration. Actions reads only the default-branch (merged) configuration; config in an open PR never affects CI authorization or worker eligibility.
-- Companion settings include worker enablement, polling behavior, and presentation/accessibility preferences. The selected model ID and exact subscription allowlist are local-only settings and are not published to Setu-mobile. Repository allowlist entries and `ACCEPTED_HOST_MODE` are also local owner-controlled settings, not remotely-configurable by a config PR. Credentials are managed by GitHub/OpenCode authentication providers, not configuration values.
+- Companion settings include worker enablement, polling behavior, and presentation/accessibility preferences. The model ladder and the selected model ID are local-only settings and are not published to Setu-mobile. Repository allowlist entries and `ACCEPTED_HOST_MODE` are also local owner-controlled settings, not remotely-configurable by a config PR. Credentials are managed by GitHub/OpenCode authentication providers, not configuration values.
 - A settings change is schema-validated locally before publication. Invalid values are rejected with a field-specific explanation and cannot create a PR.
 - Publishing settings creates or updates a config branch and pull request in Setu-mobile using the user's GitHub identity and the minimum available repository permissions. It does not push directly to the default branch. The companion shows PR creation, review, merge, and rejection status.
 - The Actions integration consumes changed configuration only after it is merged to the default branch. The validated schema must reject unknown execution/permission controls and secrets; no config field can grant itself elevated Actions permissions or bypass author/CI/host-readiness gates.
@@ -193,7 +254,7 @@ The desktop pet is an original nine-tailed fox-spirit design, not a Naruto/Kuram
 
 1. **PR/status:** repository, PR, current head SHA, eligibility, CI result, remote state, active worker state, and last update; allow the user to paste/transfer Claude's `CHANGES_REQUESTED` feedback, select a PR/SHA, review its association, and explicitly submit it as a repair request.
 2. **Queue:** queued/running/blocked items, repair reason (deterministic check or user-transferred review feedback), attempt count, and actionable error/escalation reason.
-3. **Settings:** worker enabled state, locally configured OpenCode subscription model allowlist and selected ID, explicit repository allowlist, `ACCEPTED_HOST_MODE` risk acknowledgement, polling preferences, motion preferences, and config-PR publication status. Model/repository allowlists and host-mode acceptance are not included in config PRs.
+3. **Settings:** worker enabled state, the local model ladder with the selected ID and an owner-confirmed switch control, explicit repository allowlist, `ACCEPTED_HOST_MODE` risk acknowledgement, polling preferences, motion preferences, and config-PR publication status. The model ladder, repository allowlist, and host-mode acceptance are not included in config PRs.
 4. **Local telemetry:** retained operational history and per-run outcome; no source content.
 
 Feedback for an outdated SHA cannot be applied without explicit re-association. Controls are pause/resume, cancel current run, and explicit retry after escalation. A dedicated command-approval view/modal is shown for every host shell invocation, including exact command/script, working directory, repository, PR/head SHA, purpose, and environment variable names (values remain hidden). Approve and deny are separate explicit actions; no response or UI failure denies execution. Disabled/reduced motion must be supported throughout the pet and panel; motion preference changes must not affect queue or worker behavior. Status must remain available as text and not depend on animation or color alone.
@@ -219,9 +280,10 @@ Feedback for an outdated SHA cannot be applied without explicit re-association. 
 | Workflow/setup/runner failure, cancellation, missing result, unknown outcome, or stale SHA | Do not treat it as a code failure. Mark blocked or stale, explain the reason, and require human resolution/re-run before worker execution. |
 | Label write fails | Preserve lease/run record, surface the API error, retry idempotently; do not show a successful remote transition that GitHub did not accept. |
 | OpenCode missing, rate-limited, or crashed | Preserve worktree and execution record, mark blocked, notify user, and await explicit retry. No model fallback. |
-| Model is not on the local `opencode/...` subscription allowlist, or allowlist is empty | Do not launch; report a local configuration error and require owner configuration. |
+| The active model is not on the local ladder, the ladder is empty, or the ladder file is missing/unparseable | Do not launch; report a local configuration error and require owner configuration. |
+| OpenCode reports quota or rate limiting | Classify as `model-unavailable`, preserve the worktree, block the PR, and suggest the next ladder entry. Only the owner switches models; the invocation budget is unchanged. |
 | Command-approval UI unavailable, request display incomplete, or OpenCode can bypass the broker | Deny the command and block the worker; do not fall back to direct host execution. |
-| Patch structure/scope validation fails or remote PR head no longer matches the worker's starting SHA | Do not commit or push. Preserve the worktree and execution record; report blocked/stale state for human resolution and reconciliation. |
+| Patch structure/scope validation fails or remote PR head no longer matches the worker's starting SHA | Do not commit or push. Preserve the worktree and execution record; report blocked/stale state with the enumerated scope reason codes for human resolution and reconciliation. |
 | GitHub Actions reports a deterministic check failure after the companion push | Enqueue another repair for that SHA if cycle budget remains; otherwise block for explicit retry. |
 | GitHub Actions reports infrastructure/unknown/cancelled outcome after the companion push | Do not treat it as a code failure. Mark blocked and require human resolution/re-run. |
 | PR closed or head SHA changed during execution | Cancel current work, release/expire its lease, prevent stale completion from changing current state, and reconcile labels. |
@@ -244,7 +306,7 @@ Errors visible in the panel should identify whether the issue is remote connecti
 10. A config edit is validated and published as a config PR; unmerged or invalid configuration never changes Actions/worker behavior.
 11. The UI displays PR/status, queue, settings, local telemetry, and the manual review-feedback transfer; pause/resume, cancel, and explicit retry operate on the corresponding local queue/worker state. Reduced and disabled motion preserve all functionality.
 12. SQLite and telemetry are stored outside both repositories; telemetry defaults to 90-day retention and contains only the specified operational metadata.
-13. The environment readiness state is `ACCEPTED_HOST_MODE` after the owner's risk acceptance is recorded. Worker launch additionally requires an explicit repository allowlist entry, a configured exact OpenCode subscription-model allowlist, and an OpenCode CLI 1.19.6 command-broker feasibility test proving every shell request requires a one-shot companion approval. This is explicitly not OS isolation: OpenCode and approved commands run as the owner and can access host resources permitted to that account. If command interception is incomplete or bypassable, worker execution stays disabled.
+13. The environment readiness state is `ACCEPTED_HOST_MODE` after the owner's risk acceptance is recorded. Worker launch additionally requires an explicit repository allowlist entry, a local model ladder with a selected `opencode/` model, and an OpenCode CLI 1.19.6 command-broker feasibility test proving every shell request requires a one-shot companion approval. This is explicitly not OS isolation: OpenCode and approved commands run as the owner and can access host resources permitted to that account. If command interception is incomplete or bypassable, worker execution stays disabled.
 14. Before publishing a worker patch, the companion validates patch structure/scope and confirms the remote PR head still equals the worker's starting SHA; it does not run tests locally. After validation, the companion/control plane commits and makes a normal fast-forward push to the existing PR branch. GitHub credentials are not intentionally injected into the worker, but host mode cannot guarantee user-accessible credentials are inaccessible to it; force-pushes and pushes to `main` are prohibited. GitHub Actions is the sole test gate and runs `./gradlew testDebugUnitTest detekt lint` on PR open/synchronize and after companion pushes. Any deterministic failure after push requeues repair within the cycle budget; infrastructure/unknown/cancelled results block.
 15. The companion displays and requires a separate explicit confirmation before each worker-requested host shell command. Approval binds to the exact executable/arguments or full script, cwd, repo/PR/SHA, and purpose; it cannot be reused or modified. Timeout, offline state, partial display, or broker failure denies the command.
 
@@ -252,4 +314,4 @@ Errors visible in the panel should identify whether the issue is remote connecti
 
 The owner has decided to operate on the Windows 10 Home host without OS-level isolation or a separate-user credential boundary. This replaces the earlier Windows isolation prototype gate and is recorded as `ACCEPTED_HOST_MODE`; it is not evidence that the host is isolated. The owner accepts that OpenCode or a user-approved command can access files and credentials available to the logged-in account. Do not describe the worktree, repository allowlist, model allowlist, prompt, or command-approval UI as a sandbox.
 
-The remaining technical readiness gate is command mediation: before any worker launch, verify that OpenCode CLI 1.19.6 routes every shell invocation through the companion's one-shot approval broker and cannot bypass it. If this cannot be proven, retain `ACCEPTED_HOST_MODE` as the owner's risk choice but keep execution disabled. Exact subscription model IDs and any additional private repositories are owner-provided local configuration; do not guess them. Worker-output publication remains decided as specified above, with GitHub Actions as the sole test gate.
+The remaining technical readiness gate is command mediation: before any worker launch, verify that OpenCode CLI 1.19.6 routes every shell invocation through the companion's one-shot approval broker and cannot bypass it. If this cannot be proven, retain `ACCEPTED_HOST_MODE` as the owner's risk choice but keep execution disabled. The local model ladder and any additional private repositories are owner-provided local configuration; the ladder order and default are recorded in "OpenCode worker", and both remain local-only. Worker-output publication remains decided as specified above, with GitHub Actions as the sole test gate.

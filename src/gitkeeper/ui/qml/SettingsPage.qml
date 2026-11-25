@@ -60,6 +60,40 @@ Item {
             onTextEdited: root.settingsViewModel.set_opencode_model_id(text)
         }
 
+        ComboBox {
+            id: modelPicker
+            objectName: "settingsModelPicker"
+            Layout.fillWidth: true
+            model: root.settingsViewModel
+                   ? root.settingsViewModel.available_models : []
+            currentIndex: root.settingsViewModel
+                          ? root.settingsViewModel.available_models.indexOf(
+                                root.settingsViewModel.opencode_model_id) : -1
+            Accessible.name: "OpenCode model ladder"
+            onActivated: function(index) {
+                root.settingsViewModel.use_model(
+                    root.settingsViewModel.available_models[index])
+            }
+        }
+
+        Text {
+            objectName: "settingsModelSuggestion"
+            visible: root.settingsViewModel
+                     && root.settingsViewModel.next_model_suggestion !== ""
+            text: {
+                if (!root.settingsViewModel
+                        || root.settingsViewModel.next_model_suggestion === "")
+                    return ""
+                return "Next model on the ladder: "
+                    + root.settingsViewModel.next_model_suggestion
+                    + " (switch only after the owner confirms quota exhaustion)"
+            }
+            textFormat: Text.PlainText
+            color: "#66564a"
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+
         Text {
             text: "Polling: adaptive"
             textFormat: Text.PlainText

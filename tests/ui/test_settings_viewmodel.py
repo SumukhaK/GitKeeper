@@ -1,8 +1,13 @@
 import pytest
 
+from gitkeeper.policy.models import DEFAULT_MODEL_ID, OWNER_LADDER, ModelLadder
 from gitkeeper.ui.services.config_publisher import CompanionSettings, ConfigPullRequest
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from tests.fakes.fake_config_publisher import FakeConfigPublisher
+
+
+def owner_ladder(active=DEFAULT_MODEL_ID):
+    return ModelLadder.from_ids(OWNER_LADDER, active=active)
 
 
 def make_isolation_report(tmp_path):
@@ -112,13 +117,72 @@ def test_model_selection_is_local_and_never_part_of_config_pr():
     view_model = SettingsViewModel(
         publisher,
         initial_settings=settings,
-        opencode_model_id="opencode/subscription-model",
+        model_ladder=owner_ladder(),
     )
 
-    assert view_model.opencode_model_id == "opencode/subscription-model"
+    assert view_model.opencode_model_id == DEFAULT_MODEL_ID
     assert view_model.publish() is True
     assert publisher.published_settings[0] == settings
     assert not hasattr(publisher.published_settings[0], "opencode_model_id")
+
+
+def test_model_ladder_is_exposed_in_order_for_the_desktop_picker():
+    view_model = SettingsViewModel(FakeConfigPublisher(None), model_ladder=owner_ladder())
+
+    assert view_model.available_models == list(OWNER_LADDER)
+    assert view_model.next_model_suggestion == "opencode/glm-5.3"
+
+
+def test_switching_the_model_updates_only_the_local_selection():
+    view_model = SettingsViewModel(FakeConfigPublisher(None), model_ladder=owner_ladder())
+
+    view_model.use_model("opencode/hy4-flash-free")
+
+    assert view_model.opencode_model_id == "opencode/hy4-flash-free"
+    assert view_model.next_model_suggestion == "opencode/deepseek-v4-pro"
+
+
+def test_switching_to_a_model_outside_the_ladder_is_rejected():
+    view_model = SettingsViewModel(FakeConfigPublisher(None), model_ladder=owner_ladder())
+
+    view_model.use_model("opencode/not-in-ladder")
+
+    assert view_model.opencode_model_id == DEFAULT_MODEL_ID
+    assert "ladder" in view_model.validation_message
+
+
+def test_switching_to_another_provider_is_rejected():
+    view_model = SettingsViewModel(FakeConfigPublisher(None), model_ladder=owner_ladder())
+
+    view_model.use_model("freellmapi/auto")
+
+    assert view_model.opencode_model_id == DEFAULT_MODEL_ID
+    assert "ladder" in view_model.validation_message
+
+
+def test_without_a_local_ladder_no_model_is_selected():
+    view_model = SettingsViewModel(FakeConfigPublisher(None))
+
+    assert view_model.available_models == []
+    assert view_model.opencode_model_id == ""
+    assert view_model.next_model_suggestion == ""
+
+
+def test_selecting_a_model_never_unlocks_the_worker():
+    pull_request = ConfigPullRequest(
+        url="https://github.com/SumukhaK/Setu-mobile/pull/12",
+        state="open",
+        validation_status="valid",
+        merge_status="pending",
+    )
+    publisher = FakeConfigPublisher(pull_request)
+    view_model = SettingsViewModel(publisher, model_ladder=owner_ladder())
+
+    view_model.use_model("opencode/glm-5.3")
+    view_model.set_worker_enabled(True)
+
+    assert view_model.can_enable_worker is False
+    assert view_model.publish() is False
 
 
 def test_model_selection_rejects_non_opencode_provider_ids():
@@ -128,7 +192,7 @@ def test_model_selection_rejects_non_opencode_provider_ids():
     view_model.set_opencode_model_id("external/provider-model")
 
     assert view_model.opencode_model_id == ""
-    assert "opencode/" in view_model.validation_message
+    assert "ladder" in view_model.validation_message
 
 
 def test_rejected_config_pr_keeps_merged_settings_unchanged():

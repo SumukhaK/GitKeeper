@@ -10,6 +10,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 
+from gitkeeper.policy.models import DEFAULT_MODEL_ID, OWNER_LADDER, ModelLadder
 from gitkeeper.ui.app import create_viewmodels
 from gitkeeper.ui.services.config_publisher import ConfigPullRequest
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
@@ -30,7 +31,7 @@ def find_visual_child(root, object_name):
     return None
 
 
-def load_main_window(queue_items=None):
+def load_main_window(queue_items=None, model_ladder=None):
     application = QGuiApplication.instance() or QGuiApplication([])
     queue_items = queue_items or [make_queue_item(42)]
     queue_pr_items = {
@@ -61,7 +62,8 @@ def load_main_window(queue_items=None):
                 validation_status="not-published",
                 merge_status="not-published",
             )
-        )
+        ),
+        model_ladder=model_ladder,
     )
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
@@ -255,6 +257,10 @@ def test_handscroll_exposes_settings_and_manual_feedback_controls():
     settings_worker_toggle = window.findChild(QObject, "settingsWorkerEnabledCheckBox")
     settings_worker_gate = window.findChild(QObject, "settingsWorkerGateText")
     settings_model_input = window.findChild(QObject, "settingsModelIdInput")
+    settings_model_picker = window.findChild(QObject, "settingsModelPicker")
+    settings_model_suggestion = window.findChild(
+        QObject, "settingsModelSuggestion"
+    )
     settings_motion_combo = window.findChild(QObject, "settingsMotionPreference")
 
     assert feedback_input is not None
@@ -269,6 +275,8 @@ def test_handscroll_exposes_settings_and_manual_feedback_controls():
     assert "not os isolation" in gate_text
     assert settings_model_input is not None
     assert settings_model_input.property("text") == ""
+    assert settings_model_picker.property("count") == 0
+    assert settings_model_suggestion.property("text") == ""
     assert settings_motion_combo is not None
 
     settings_button.click()
@@ -323,3 +331,21 @@ def test_remote_text_components_use_plain_text_format():
     for component in ("PRStatusPage.qml", "QueuePage.qml"):
         source = (qml_directory / component).read_text(encoding="utf-8")
         assert "textFormat: Text.PlainText" in source
+
+
+def test_settings_handscroll_exposes_the_local_model_ladder():
+    ladder = ModelLadder.from_ids(OWNER_LADDER, active=DEFAULT_MODEL_ID)
+    application, engine, window, *_ = load_main_window(model_ladder=ladder)
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    picker = window.findChild(QObject, "settingsModelPicker")
+    suggestion = window.findChild(QObject, "settingsModelSuggestion")
+    input_field = window.findChild(QObject, "settingsModelIdInput")
+
+    assert picker is not None
+    assert picker.property("count") == len(OWNER_LADDER)
+    assert picker.property("currentIndex") == 0
+    assert input_field.property("text") == DEFAULT_MODEL_ID
+    assert "opencode/glm-5.3" in suggestion.property("text")
+    assert "owner confirms" in suggestion.property("text")
