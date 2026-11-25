@@ -9,6 +9,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
 from gitkeeper.policy.models import load_ladder
+from gitkeeper.ui.viewmodels.command_approval import CommandApprovalViewModel
 from gitkeeper.ui.viewmodels.queue import QueueViewModel
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from gitkeeper.ui.viewmodels.status import StatusViewModel
@@ -40,12 +41,14 @@ def main(
     telemetry_view_model = TelemetryViewModel(telemetry_service)
     if telemetry_service is not None:
         telemetry_view_model.refresh()
+    approval_view_model = CommandApprovalViewModel()
     engine = QQmlApplicationEngine()
     context = engine.rootContext()
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
     context.setContextProperty("appSettingsViewModel", settings_view_model)
     context.setContextProperty("appTelemetryViewModel", telemetry_view_model)
+    context.setContextProperty("appCommandApprovalViewModel", approval_view_model)
 
     qml_path = Path(__file__).parent / "qml" / "Main.qml"
     engine.load(QUrl.fromLocalFile(str(qml_path)))

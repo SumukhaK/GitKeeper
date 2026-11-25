@@ -19,6 +19,7 @@ Rectangle {
     property var queueViewModel
     property var settingsViewModel
     property var telemetryViewModel
+    property var approvalViewModel
     signal closeRequested()
 
     ColumnLayout {
@@ -119,5 +120,9 @@ Rectangle {
             radius: 5
             color: "#79563d"
         }
+    }
+
+    CommandApprovalDialog {
+        approvalViewModel: root.approvalViewModel
     }
 }

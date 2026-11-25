@@ -10,9 +10,11 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtTest import QTest
 
+from gitkeeper.host_mode.command_broker import CommandRequest, render_request
 from gitkeeper.policy.models import DEFAULT_MODEL_ID, OWNER_LADDER, ModelLadder
 from gitkeeper.ui.app import create_viewmodels
 from gitkeeper.ui.services.config_publisher import ConfigPullRequest
+from gitkeeper.ui.viewmodels.command_approval import CommandApprovalViewModel
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from gitkeeper.ui.viewmodels.telemetry import TelemetryViewModel
 from tests.fakes.fake_config_publisher import FakeConfigPublisher
@@ -73,6 +75,8 @@ def load_main_window(queue_items=None, model_ladder=None):
     context.setContextProperty(
         "appTelemetryViewModel", TelemetryViewModel(None)
     )
+    approval_view_model = CommandApprovalViewModel()
+    context.setContextProperty("appCommandApprovalViewModel", approval_view_model)
     qml_path = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -100,11 +104,12 @@ def load_main_window(queue_items=None, model_ladder=None):
         status_view_model,
         queue_view_model,
         settings_view_model,
+        approval_view_model,
     )
 
 
 def test_pet_opens_and_closes_handscroll_panel():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
     fox_button = window.findChild(QObject, "foxPetButton")
     close_button = window.findChild(QObject, "handscrollCloseButton")
 
@@ -123,7 +128,7 @@ def test_pet_opens_and_closes_handscroll_panel():
 
 
 def test_pet_opens_handscroll_with_keyboard():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
 
     window.requestActivate()
     QTest.keyClick(window, Qt.Key.Key_Tab)
@@ -143,7 +148,7 @@ def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
     blocked.state = "blocked"
     running = make_queue_item(45)
     running.state = "running"
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window(
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window(
         [queued, blocked, running]
     )
     fox_button = window.findChild(QObject, "foxPetButton")
@@ -173,7 +178,7 @@ def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
 
 
 def test_status_and_queue_pages_render_textual_state():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
     status_text = window.findChild(QObject, "statusStateText")
     repository_text = window.findChild(QObject, "statusRepositoryText")
     worker_state_text = window.findChild(QObject, "workerStateText")
@@ -208,7 +213,7 @@ def test_queue_controls_are_accessible_and_update_only_after_service_refresh():
     blocked.state = "blocked"
     running = make_queue_item(45)
     running.state = "running"
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window(
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window(
         [queued, blocked, running]
     )
     window.findChild(QObject, "foxPetButton").click()
@@ -246,7 +251,7 @@ def test_queue_controls_are_accessible_and_update_only_after_service_refresh():
 
 
 def test_handscroll_exposes_settings_and_manual_feedback_controls():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -285,7 +290,7 @@ def test_handscroll_exposes_settings_and_manual_feedback_controls():
 
 
 def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -306,7 +311,7 @@ def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
 
 
 def test_handscroll_includes_local_telemetry_and_retention_controls():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -331,6 +336,139 @@ def test_remote_text_components_use_plain_text_format():
     for component in ("PRStatusPage.qml", "QueuePage.qml"):
         source = (qml_directory / component).read_text(encoding="utf-8")
         assert "textFormat: Text.PlainText" in source
+
+
+def make_command_request(pr_number=42):
+    return CommandRequest(
+        executable="py",
+        cwd=str(Path(__file__).parents[2]),
+        repository="SumukhaK/GitKeeper",
+        pr_number=pr_number,
+        starting_sha="a" * 40,
+        purpose="Apply the repair for the failed deterministic check",
+        argv=("py", "-m", "pytest", "-q"),
+        environment_names=("PYTHONPATH",),
+    )
+
+
+def present_pending_command(approval_view_model, pr_number=42):
+    request = make_command_request(pr_number)
+    return request, approval_view_model.show(request.digest, render_request(request))
+
+
+def test_command_approval_dialog_stays_hidden_until_a_command_is_pending():
+    application, engine, window, *_, approval_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    dialog = window.findChild(QObject, "commandApprovalDialog")
+    assert approval_view_model.status == "idle"
+    assert dialog is not None
+    assert dialog.property("visible") is False
+    assert (
+        window.findChild(QObject, "commandApprovalStatusText").property("text")
+        == "No command is waiting for review."
+    )
+    engine.deleteLater()
+
+
+def test_command_approval_dialog_shows_every_rendered_line_before_a_decision():
+    application, engine, window, *_, approval_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    request, rendered = present_pending_command(approval_view_model)
+    application.processEvents()
+
+    details = window.findChild(QObject, "commandApprovalDetails")
+    approve = window.findChild(QObject, "commandApprovalApproveButton")
+    deny = window.findChild(QObject, "commandApprovalDenyButton")
+    subject = window.findChild(QObject, "commandApprovalSubjectText")
+
+    assert window.findChild(QObject, "commandApprovalDialog").property("visible") is True
+    assert details.property("text") == "\n".join(rendered.lines)
+    assert f"Request digest: {request.digest}" in details.property("text")
+    assert "SumukhaK/GitKeeper #42" in subject.property("text")
+    assert approve.property("text") == "Approve once"
+    assert deny.property("text") == "Deny"
+    assert approve.property("activeFocusOnTab") is True
+    assert deny.property("activeFocusOnTab") is True
+    assert approve.property("enabled") is True
+    assert deny.property("enabled") is True
+    assert (
+        window.findChild(QObject, "commandApprovalStatusText").property("text")
+        == "Review the exact command below before it runs."
+    )
+    engine.deleteLater()
+
+
+def test_command_approval_dialog_reports_only_the_clicked_decision():
+    application, engine, window, *_, approval_view_model = load_main_window()
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    present_pending_command(approval_view_model)
+    application.processEvents()
+    window.findChild(QObject, "commandApprovalDenyButton").click()
+    application.processEvents()
+
+    assert approval_view_model.status == "denied"
+    assert (
+        window.findChild(QObject, "commandApprovalStatusText").property("text")
+        == "Denied. The command was not run."
+    )
+    assert window.findChild(QObject, "commandApprovalDialog").property("visible") is False
+
+    approval_view_model.reset()
+    present_pending_command(approval_view_model)
+    application.processEvents()
+    window.findChild(QObject, "commandApprovalApproveButton").click()
+    application.processEvents()
+
+    assert approval_view_model.status == "queued-for-execution"
+    assert (
+        window.findChild(QObject, "commandApprovalStatusText").property("text")
+        == "Approved once. Waiting for the worker to report the result."
+    )
+    engine.deleteLater()
+
+
+@pytest.mark.parametrize("motion_preference", ["reduced", "disabled"])
+def test_command_approval_keeps_details_and_controls_without_motion(motion_preference):
+    application, engine, window, *_, approval_view_model = load_main_window()
+    approval_view_model.set_motion_preference(motion_preference)
+    window.findChild(QObject, "foxPetButton").click()
+    application.processEvents()
+
+    present_pending_command(approval_view_model)
+    application.processEvents()
+
+    assert window.findChild(QObject, "commandApprovalPulse").property("visible") is False
+    assert window.findChild(QObject, "commandApprovalDetails").property("visible") is True
+    assert (
+        window.findChild(QObject, "commandApprovalApproveButton").property("visible")
+        is True
+    )
+    assert (
+        window.findChild(QObject, "commandApprovalDenyButton").property("visible")
+        is True
+    )
+    engine.deleteLater()
+
+
+def test_command_approval_details_are_read_only_plain_text():
+    source = (
+        Path(__file__).parents[2]
+        / "src"
+        / "gitkeeper"
+        / "ui"
+        / "qml"
+        / "CommandApprovalDialog.qml"
+    ).read_text(encoding="utf-8")
+
+    assert "readOnly: true" in source
+    assert "textFormat: TextEdit.PlainText" in source
+    assert 'Accessible.name: text' in source
 
 
 def test_settings_handscroll_exposes_the_local_model_ladder():
