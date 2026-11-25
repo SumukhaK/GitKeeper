@@ -238,8 +238,10 @@ Read, in order:
 4. The [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — the active executable slices and evidence gates.
 
 Execute Task 0 first, then Tasks 1–7 sequentially. Use a fresh implementer and a
-fresh reviewer for every code slice. Merge only after clean independent review and
-passing focused/full tests, and record PR/merge evidence before starting the next
-slice. Source-plan Tasks 3–5 and all worker execution, worktree, OpenCode launch,
+fresh reviewer for every code slice. No slice is independently reviewed merely
+because P0 or an earlier slice was reviewed. Merge only after that slice's clean
+independent review and passing focused/full tests, and record PR/merge evidence
+before starting the next slice. Source-plan Tasks 3–5 and all worker execution,
+worktree, OpenCode launch,
 publication, UI/settings integration, workflow, and Setu-mobile changes remain out
 of scope. Worker execution must remain disabled.

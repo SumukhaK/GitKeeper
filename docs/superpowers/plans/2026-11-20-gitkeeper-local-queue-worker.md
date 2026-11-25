@@ -12,7 +12,7 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into independently reviewed slices in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 is in `review` with PR pending; no queue code is merged.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 is in `review` with PR pending; no queue code is merged or independently reviewed.
 
 | Original task | Detailed slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |

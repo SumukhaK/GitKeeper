@@ -186,7 +186,7 @@ Follow the detailed task lists in the linked plans, in this order. The active qu
 - `docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md` — approved product/security contract.
 - `docs/superpowers/plans/2026-11-20-gitkeeper-host-mode-readiness.md` — host-risk, readiness, command broker, and OpenCode capability tasks.
 - `docs/superpowers/plans/2026-11-20-gitkeeper-local-queue-worker.md` — original queue, SQLite, worktree, worker, lifecycle, and publication tasks.
-- `docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md` — active independently reviewed queue domain, persistence, telemetry, and GitHub reconciliation slices.
+- `docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md` — active queue domain, persistence, telemetry, and GitHub reconciliation slices; each code slice requires fresh independent review before merge.
 - `docs/superpowers/plans/2026-11-20-gitkeeper-companion-ui.md` — companion view models, pet/panel, config UI, telemetry, and integration tasks.
 - `docs/superpowers/plans/2026-11-20-setu-mobile-actions-config.md` — Actions/config implementation and live verification tasks.
 - `docs/superpowers/isolation/windows-prototype-result.md` — original isolation NO-GO evidence and its accepted-host-mode interpretation. Preserve the NO-GO result; do not rewrite it as a pass.
