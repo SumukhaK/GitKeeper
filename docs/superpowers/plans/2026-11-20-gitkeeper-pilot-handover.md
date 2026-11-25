@@ -12,7 +12,7 @@
 - The model-ladder and patch-scope policy slice plus `README.md` are merged: [GitKeeper #4](https://github.com/SumukhaK/GitKeeper/pull/4), merge commit `9b3213fdca9f618e018fa2dbc797be067d2dc47f`.
 - The repository housekeeping rule (README/About/tracker updates on every push) is merged: [GitKeeper #5](https://github.com/SumukhaK/GitKeeper/pull/5), merge commit `cab09d8918468bd4a18101fba94f9f626b5f4eae`.
 - Typed host-mode readiness is merged: [GitKeeper #6](https://github.com/SumukhaK/GitKeeper/pull/6), merge commit `ca34a45`, which adds `src/gitkeeper/host_mode/readiness.py` and `tests/host_mode/test_readiness.py` and retires the historical isolation report as an authorization input.
-- The one-shot command approval broker and its companion overlay are implemented on this branch: `src/gitkeeper/host_mode/command_broker.py`, `src/gitkeeper/ui/viewmodels/command_approval.py`, and `src/gitkeeper/ui/qml/CommandApprovalDialog.qml`, with the readiness plan's Task 2 Steps 1-7 ticked. Full suite: `py -m pytest -q` — 318 passed.
+- The one-shot command approval broker and its companion overlay are merged: [GitKeeper #8](https://github.com/SumukhaK/GitKeeper/pull/8), merge commit `9f9603dc234c7d746541e06171bb10b10548efcd`. It adds `src/gitkeeper/host_mode/command_broker.py`, `src/gitkeeper/ui/viewmodels/command_approval.py`, and `src/gitkeeper/ui/qml/CommandApprovalDialog.qml`, with the readiness plan's Task 2 Steps 1-7 ticked. Full suite at merge: `py -m pytest -q` — 318 passed.
 - Setu-mobile Actions/config implementation is in [Setu-mobile #19](https://github.com/SumukhaK/Setu-mobile/pull/19), head `a153271a18241b3cf5b9d5ed7025916c6b11e9f8`. Its `Android CI` and `GitGuardian Security Checks` passed on that head; the PR is open and unmerged.
 - **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch. The broker's default executor, `execution_disabled`, refuses every launch until Task 3 proves CLI mediation.
 
@@ -120,6 +120,9 @@
   ruff configuration, so these are not merge gates).
 - Deliberately not in this slice: any executor. `execution_disabled` is the only executor and
   refuses every launch, so an approval can never be turned into a process run here.
+- This slice is merged as [GitKeeper #8](https://github.com/SumukhaK/GitKeeper/pull/8) at
+  merge commit `9f9603dc234c7d746541e06171bb10b10548efcd`; `main` is authoritative from here
+  on, and branch tips may drift.
 
 ## Approved decisions that must not be re-litigated
 
