@@ -8,6 +8,7 @@
 - The approved architecture and scope are in [the pilot design spec](../specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md).
 - The original design-only PR, [GitKeeper #1](https://github.com/SumukhaK/GitKeeper/pull/1), is merged; it contained only the design spec.
 - The GitKeeper implementation slice is merged: [GitKeeper #2](https://github.com/SumukhaK/GitKeeper/pull/2), merge commit `d7ea534e04bf9b641ce040da2c4cff660baabce9` on `main`, from branch `sumukhak-gitkeeper-pilot-design`. It adds the companion UI foundation, the fail-closed worker/config gate, and this tracker. Treat `main` as the source of truth; branch tips may drift.
+- The model-ladder and patch-scope policy slice plus `README.md` are merged: [GitKeeper #4](https://github.com/SumukhaK/GitKeeper/pull/4), merge commit `9b3213fdca9f618e018fa2dbc797be067d2dc47f`.
 - Setu-mobile Actions/config implementation is in [Setu-mobile #19](https://github.com/SumukhaK/Setu-mobile/pull/19), head `a153271a18241b3cf5b9d5ed7025916c6b11e9f8`. Its `Android CI` and `GitGuardian Security Checks` passed on that head; the PR is open and unmerged.
 - **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch.
 
@@ -73,6 +74,19 @@
 7. GitHub is authoritative for remote PR/queue state. SQLite state and telemetry live outside both repositories. Telemetry stores operational metadata only, defaults to 90-day retention, and never drives automatic self-modification.
 8. PR close cancels work; reopening starts a fresh automatic-attempt cycle; a new head SHA cancels stale work and queues the new revision. Allow at most three automatic invocations per open/reopen cycle; escalation requires explicit user retry.
 9. Configuration changes are validated and published as a config PR. Actions reads only merged/default-branch config. Local host/repository/model policy is never published in Setu-mobile config.
+
+## Repository housekeeping on every push
+
+Standing owner instruction: whenever work is pushed to `SumukhaK/GitKeeper`, also keep the
+repository front page accurate.
+
+1. Update the GitHub About section (`gh repo edit --description ... --add-topic ...`) when the
+   project description or scope changed.
+2. Update `README.md` so its status table, commands, and layout still match the code. The
+   README must keep saying plainly that worker execution is disabled until the OpenCode
+   command broker is proven.
+3. Keep this tracker's "Current state" PR list current, so a new agent knows which slice
+   `main` already contains.
 
 ## Ordered handoff plan
 
