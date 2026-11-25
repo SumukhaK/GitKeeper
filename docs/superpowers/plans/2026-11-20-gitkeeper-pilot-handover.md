@@ -1,6 +1,6 @@
 # GitKeeper Setu-mobile Pilot — Handover Tracker
 
-**Last updated:** 2026-11-25
+**Last updated:** 2026-11-26
 
 **Purpose:** Give a new engineer or AI agent enough durable context to continue the pilot without reconstructing decisions from chat history.
 
@@ -15,6 +15,7 @@
 - The one-shot command approval broker and its companion overlay are merged: [GitKeeper #8](https://github.com/SumukhaK/GitKeeper/pull/8), merge commit `9f9603dc234c7d746541e06171bb10b10548efcd`. It adds `src/gitkeeper/host_mode/command_broker.py`, `src/gitkeeper/ui/viewmodels/command_approval.py`, and `src/gitkeeper/ui/qml/CommandApprovalDialog.qml`, with the readiness plan's Task 2 Steps 1-7 ticked. Full suite at merge: `py -m pytest -q` — 318 passed.
 - Setu-mobile Actions/config implementation is in [Setu-mobile #19](https://github.com/SumukhaK/Setu-mobile/pull/19), head `a153271a18241b3cf5b9d5ed7025916c6b11e9f8`. Its `Android CI` and `GitGuardian Security Checks` passed on that head; the PR is open and unmerged.
 - OpenCode command mediation is proven for CLI `1.19.6` and merged: [GitKeeper #10](https://github.com/SumukhaK/GitKeeper/pull/10), merge commit `6a6415f56b4575b9784309a2be0fc4e5f7cd3f01`. It adds `src/gitkeeper/host_mode/opencode_capability.py` (29 tests), `src/gitkeeper/host_mode/broker_plugin/gitkeeper-command-broker.mjs` (18 tests), and the evidence record `docs/superpowers/host-mode-command-broker-result.md`, with the readiness plan's Task 3 Steps 1-7 ticked. A three-arm live probe against the real CLI showed approval runs the exact command, denial blocks it, and an approval naming a different request id blocks it. Full suite at merge: `py -m pytest -q` — 365 passed.
+- The README workflow diagram was restyled and merged: [GitKeeper #12](https://github.com/SumukhaK/GitKeeper/pull/12), merge commit `f24c7932ed40d754778992401eb01cb0f0ea7cc8`. The old diagram rendered at 3174x479 and GitHub scaled its text to unreadable size; it is now a 619x1174 vertical staircase with a warm semantic palette, zone tags 1/2/3, the `worker-running` announce step, and the owner-retry return edge. Docs only: no code, test, workflow, or scope change, so the About description was left as is.
 - **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch. The broker's default executor, `execution_disabled`, still refuses every launch: mediation is proven, but nothing wires a real executor, and Task 4 must consume the typed capability and call `require_inert_worktree` before any launch.
 
 ## Completion tracker
