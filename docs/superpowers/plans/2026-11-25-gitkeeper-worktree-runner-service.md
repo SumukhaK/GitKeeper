@@ -313,7 +313,7 @@ Here `QueueRepairReason` is the explicit queue-model alias defined in Task 4; it
 
 ## Durable Tasks 3–5 Tracker
 
-Current implementation state is `PLANNED/PENDING`. The documentation is published in open [GitKeeper PR #14](https://github.com/SumukhaK/GitKeeper/pull/14). Independent reviews requested changes on `e47b090`, `a088da6`, `a6f670d`, `f2e310f`, `f12df43`, and `fec5b54`; the seventh correction addresses the latest four findings and awaits fresh approval. No reviewed head is approved or merged. Task PR numbers, commit SHAs, and merge evidence are deliberately not invented. Update a row only from real delivery evidence.
+Current implementation state is `PLANNED/PENDING`. The documentation is published and merged in [GitKeeper PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) at merge commit `45a16255e694c372f1b970ad532a72d352c8d3a0` after independent approval of head `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Task PR numbers, commit SHAs, and merge evidence for Tasks 3–5 are deliberately not invented. Update a row only from real delivery evidence.
 
 | Task | Current state | Dependencies | Deliverable | Verification gate | PR | Commit | Review | Merge |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

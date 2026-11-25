@@ -57,8 +57,8 @@ Statuses: `pending`, `in progress`, `review`, `blocked`, `merged`.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| P0 | This plan, status tracking, and README/handover correction | re-review pending | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
-| 1 | Domain contracts and readiness-reason adapter | pending | — | — |
+| P0 | This plan, status tracking, and README/handover correction | merged | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | `45a16255e694c372f1b970ad532a72d352c8d3a0` |
+| 1 | Domain contracts and readiness-reason adapter | review | — | — |
 | 2 | SQLite queue/cycle/lease persistence | pending | — | — |
 | 3 | Operational-only telemetry persistence | pending | — | — |
 | 4 | GitHub read/config/label REST adapter | pending | — | — |
@@ -67,7 +67,7 @@ Statuses: `pending`, `in progress`, `review`, `blocked`, `merged`.
 | 7 | Adaptive outbound poller | pending | — | — |
 | Final | Combined whole-branch review | pending | — | — |
 
-P0 is the planning-docs slice. Its initial independent review passed at `9e712a05`; combined documentation PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) received five Required findings on `e47b090`, five further findings on `a088da6`, three on `a6f670d`, three on `f2e310f`, and two on `f12df43`. Sixth correction head `fec5b54` received four further Required findings: cancelled-intent discovery contradicted its tests; publication committed before fresh authoritative validation; owner cancellation did not share the publisher's lifecycle guard; and an unassociable intent could remain unresolved without a durable launch-blocking latch. The seventh correction preserves the prior fixes, requires fresh authoritative validation before commit, serializes owner cancellation with publication, and requires exact worktree/commit association or a durable failed latch before launch selection. Fresh independent approval of the seventh correction is pending; do not merge any reviewed head. Slices 1–3 together fulfill original Task 1 of the [local queue and worker plan](2026-11-20-gitkeeper-local-queue-worker.md); slices 4–7 fulfill original Task 2. Original Tasks 1–2 remain pending until their mapped slices have merged code and clean review/test evidence. No queue code is merged yet. Tasks 3–5 of the source plan are detailed separately in the [worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md), but remain outside this plan's implementation scope, and worker execution stays disabled.
+P0 is merged: [GitKeeper PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) merged the reviewed documentation at `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8` as `45a16255e694c372f1b970ad532a72d352c8d3a0`. Task 1 Slice 1 is implemented at `6be6122` in the isolated `queue-slice-1-domain` worktree: 184 queue tests, 221 combined queue/readiness tests, and 549 full-suite tests pass. It awaits fresh independent review and merge. Slices 1–3 together fulfill original Task 1 of the [local queue and worker plan](2026-11-20-gitkeeper-local-queue-worker.md); slices 4–7 fulfill original Task 2. Original Tasks 1–2 remain pending until their mapped slices have merged code and clean review/test evidence. No queue code is merged yet. Tasks 3–5 are detailed separately in the [worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md), remain outside this plan's implementation scope, and keep worker execution disabled.
 
 ## File Structure
 
@@ -118,10 +118,10 @@ For every code slice, after its focused tests pass:
 
 - [x] Add the execution-status tables and cross-links described above; preserve all existing pilot decisions.
 - [x] Correct the handover/README claim about readiness Task 4: readiness code and broker proof exist, but worker launch remains disabled and queue/worker implementation is pending.
-- [x] Publish P0 docs with the required trailer; combined [#14](https://github.com/SumukhaK/GitKeeper/pull/14) remains open and unmerged. Six correction rounds were reviewed (`e47b090`, `a088da6`, `a6f670d`, `f2e310f`, `f12df43`, `fec5b54`); the seventh correction awaits fresh approval.
+- [x] Publish P0 docs with the required trailer; [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged the reviewed head `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8` as `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds.
 - [x] Self-review the four docs against the approved spec and task requirements; record the result in the task report.
 - [x] Controller: push `sumukhak-gitkeeper-pilot-design` and open a docs-only PR.
-- [ ] Controller: dispatch an independent reviewer, merge only if clean, and replace P0's row with PR/merge evidence.
+- [x] Controller: independent review approved `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`; merge `45a16255e694c372f1b970ad532a72d352c8d3a0` and PR/merge evidence are recorded above.
 - [x] Controller: update the ignored SDD ledger with plan path, `BASE=2bf5a48aeb4018019da905f5dbf07639bf46ad21`, and current slice/PR/review state.
 
 ## Exact Domain Contract

@@ -29,18 +29,18 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — P0 initially approved; review corrections in [#14](https://github.com/SumukhaK/GitKeeper/pull/14), fresh approval pending; slices 1–7 pending |
-| Queue, leases, GitHub label reconciliation, worktrees | Not implemented; no queue code merged |
-| Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — planned; review corrections in [#14](https://github.com/SumukhaK/GitKeeper/pull/14), fresh approval and implementation pending |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 awaiting review; slices 2–7 pending |
+| Queue, leases, GitHub label reconciliation, worktrees | Queue domain contracts implemented; persistence, leases, reconciliation, and worktrees not implemented; no queue code merged |
+| Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — merged plan; implementation pending |
 
 ## Queue implementation status
 
-The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0's initial independent review passed. Combined docs PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) received five Required findings on `e47b090`, five on `a088da6`, three on `a6f670d`, three on `f2e310f`, two on `f12df43`, and four on `fec5b54`. The seventh correction makes cancelled-intent discovery match recovery tests, requires fresh authoritative validation before publication commits, serializes owner cancellation with publication through one shared lifecycle guard, and blocks launch selection when an exact worktree/commit cannot be associated until an unresolved intent is latched and owner-restored. Earlier observation, closure, retry-latch, typed-404, projection-fence, lock-order, and claim-binding fixes remain in force. Fresh approval of the seventh correction is pending; do not merge any reviewed head. Slices 1–3 fulfill original Task 1; slices 4–7 fulfill original Task 2. No queue code is merged. Source-plan Tasks 3–5 have a separate [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes implementation or worker enablement.
+The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). Planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds and approval of `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Slice 1 (domain contracts and readiness-reason adapter) is implemented at `6be6122` with 184 queue tests and 549 full-suite tests passing; it awaits independent review and merge. Slices 1–3 fulfill original Task 1 and slices 4–7 fulfill original Task 2. No queue code is merged. Source-plan Tasks 3–5 have a separate merged [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes worker enablement.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| P0 | Publish plan, status tracking, and README/handover correction | re-review pending | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
-| 1 | Domain contracts and readiness-reason adapter | pending | — | — |
+| P0 | Publish plan, status tracking, and README/handover correction | merged | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | `45a16255e694c372f1b970ad532a72d352c8d3a0` |
+| 1 | Domain contracts and readiness-reason adapter | review | — | — |
 | 2 | SQLite queue/cycle/lease persistence | pending | — | — |
 | 3 | Operational-only telemetry persistence | pending | — | — |
 | 4 | GitHub read/config/label REST adapter | pending | — | — |
@@ -72,7 +72,8 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (365 tests) |
+| `py -m pytest -q` | Full suite (549 tests) |
+| `py -m pytest tests/test_queue_models.py tests/host_mode/test_readiness.py -q` | Queue domain contracts and readiness regressions (221 tests) |
 | `py -m pytest tests/host_mode -q` | Typed readiness blockers, the approval broker, and OpenCode mediation |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |
@@ -225,19 +226,19 @@ src/gitkeeper/
 tests/         host_mode, policy, isolation, and UI suites plus fakes
 docs/          design spec, plans, and the handover tracker
 prototypes/    throwaway UI experiments, not shipped
-brainstorm.md  original design notes
+brainstorm.md  historical design notes; non-authoritative
 ```
 
 ## Where to start as the next contributor
 
 Read, in order:
 
-1. [`brainstorm.md`](brainstorm.md) — the original problem and shape.
-2. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved contract.
-3. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
-4. The [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — the active executable slices and evidence gates.
+1. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved product, trust, and security source of truth.
+2. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
+3. The [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — the active executable slices and evidence gates.
+4. [`brainstorm.md`](brainstorm.md) — retained historical design notes only; where they differ, the approved design spec wins.
 
-After P0 receives fresh approval, execute slices 1–7 sequentially. Use a fresh implementer and a
+With P0 merged, execute slices 1–7 sequentially. Use a fresh implementer and a
 fresh reviewer for every code slice. No slice is independently reviewed merely
 because P0 or an earlier slice was reviewed. Merge only after that slice's clean
 independent review and passing focused/full tests, and record PR/merge evidence
