@@ -30,23 +30,23 @@
 - A fork, external PR, non-allowlisted repo, other author, or public non-exception repo cannot become claimable: Task 1 tests require an ineligible result.
 - An empty model allowlist, provider ID outside `opencode/`, or ID absent from the exact list cannot launch OpenCode: Task 1 tests require denial.
 - `ACCEPTED_HOST_MODE` never reports isolation and does not itself permit launch: Task 1 tests distinguish acceptance from readiness.
-- Every shell request requires exact one-shot approval and direct OpenCode execution cannot bypass it: Tasks 2–3 test request binding/replay and the actual CLI hook; inability to prove mediation is an explicit no-go, not a skipped test.
+- Every shell request requires exact one-shot approval and direct OpenCode execution cannot bypass it: Tasks 2â€“3 test request binding/replay and the actual CLI hook; inability to prove mediation is an explicit no-go, not a skipped test.
 - Worktree lifecycle preserves the active checkout, and publication blocks on stale SHA or failed scope validation: Task 4 tests branch/HEAD/dirty-file snapshots and publication rejection.
 
 ---
 
 ## Planned file inventory (GitKeeper repository)
 
-- Modify: `src/gitkeeper/isolation/report.py` — retire OS-isolation GO semantics from worker readiness; retain any report type only if still needed for historical records, without allowing it to gate or authorize host execution.
-- Create: `src/gitkeeper/host_mode/readiness.py` — typed `HostModePolicy`, `HostModeStatus`, and fail-closed eligibility/readiness evaluation.
-- Create: `src/gitkeeper/host_mode/command_broker.py` — immutable command request, one-time approval token, execution adapter, timeout/deny paths, and audit metadata.
-- Create: `src/gitkeeper/host_mode/opencode_capability.py` — detects CLI version and verifies that all shell requests pass through the broker; no worker launch when unsupported.
-- Modify: `src/gitkeeper/ui/app.py`, `src/gitkeeper/ui/viewmodels/settings.py`, and `src/gitkeeper/ui/services/config_publisher.py` — pass typed host-mode readiness instead of a boolean or `IsolationReport`; never publish host/repo/model allowlists remotely.
-- Modify: `src/gitkeeper/ui/viewmodels/queue.py` and `src/gitkeeper/ui/qml/QueuePage.qml` — surface pending command approvals and deny/block outcomes without showing success before confirmation.
-- Create: `src/gitkeeper/ui/viewmodels/command_approval.py` — safe presentation and explicit approve/deny actions for immutable broker requests.
-- Modify: `src/gitkeeper/ui/qml/SettingsPage.qml` — owner-managed repo/model allowlists and explicit accepted-host-mode disclosure.
-- Modify: `src/gitkeeper/ui/qml/HandscrollPanel.qml` — command confirmation overlay/dialog integrated into the existing four-area panel.
-- Create: `src/gitkeeper/ui/qml/CommandApprovalDialog.qml` — full immutable request display and explicit approve/deny controls.
+- Modify: `src/gitkeeper/isolation/report.py` â€” retire OS-isolation GO semantics from worker readiness; retain any report type only if still needed for historical records, without allowing it to gate or authorize host execution.
+- Create: `src/gitkeeper/host_mode/readiness.py` â€” typed `HostModePolicy`, `HostModeStatus`, and fail-closed eligibility/readiness evaluation.
+- Create: `src/gitkeeper/host_mode/command_broker.py` â€” immutable command request, one-time approval token, execution adapter, timeout/deny paths, and audit metadata.
+- Create: `src/gitkeeper/host_mode/opencode_capability.py` â€” detects CLI version and verifies that all shell requests pass through the broker; no worker launch when unsupported.
+- Modify: `src/gitkeeper/ui/app.py`, `src/gitkeeper/ui/viewmodels/settings.py`, and `src/gitkeeper/ui/services/config_publisher.py` â€” pass typed host-mode readiness instead of a boolean or `IsolationReport`; never publish host/repo/model allowlists remotely.
+- Modify: `src/gitkeeper/ui/viewmodels/queue.py` and `src/gitkeeper/ui/qml/QueuePage.qml` â€” surface pending command approvals and deny/block outcomes without showing success before confirmation.
+- Create: `src/gitkeeper/ui/viewmodels/command_approval.py` â€” safe presentation and explicit approve/deny actions for immutable broker requests.
+- Modify: `src/gitkeeper/ui/qml/SettingsPage.qml` â€” owner-managed repo/model allowlists and explicit accepted-host-mode disclosure.
+- Modify: `src/gitkeeper/ui/qml/HandscrollPanel.qml` â€” command confirmation overlay/dialog integrated into the existing four-area panel.
+- Create: `src/gitkeeper/ui/qml/CommandApprovalDialog.qml` â€” full immutable request display and explicit approve/deny controls.
 - Create: `tests/host_mode/test_readiness.py`, `tests/host_mode/test_command_broker.py`, `tests/host_mode/test_opencode_capability.py`, and `tests/ui/test_command_approval.py`.
 - Modify: `tests/ui/test_app.py`, `tests/ui/test_settings_viewmodel.py`, `tests/ui/test_config_publisher.py`, `tests/ui/test_queue_viewmodel.py`, and `tests/ui/test_qml_accessibility.py`.
 - Modify: `docs/superpowers/isolation/windows-prototype-result.md` to mark the earlier NO-GO as superseded by the owner's explicit host-risk acceptance, preserving the original evidence and stating that no isolation was achieved.
@@ -74,11 +74,11 @@
 - Produces `HostModePolicy`, `HostModeStatus`, `RepositoryPolicy`, `evaluate_worker_readiness(...)`, and exact model/repository validators.
 - Historical isolation reports remain informational only and cannot unlock or block accepted host mode through a hidden boolean path.
 
-- [ ] **Step 1: Write failing tests** for accepted mode not equaling readiness, unknown/public repository denied, explicit Setu-mobile public exception, owner-controlled private repo allowed only when allowlisted and integration-enabled, forks denied, author/draft/closed/config/SHA/budget failures denied, and exact `opencode/...` model allowlisting.
-- [ ] **Step 2: Run `py -m pytest tests/host_mode/test_readiness.py tests/isolation -q`.** Expected: FAIL because host readiness types do not exist and the old gate contract remains.
-- [ ] **Step 3: Implement typed readiness/policy validation** without any bool bypass. Require the exact public exception and exact case-sensitive owner/repo/model entries.
-- [ ] **Step 4: Add tests** that an unmerged config, remote config allowlist, arbitrary provider ID, or empty local allowlist never produces ready status.
-- [ ] **Step 5: Run `py -m pytest tests/host_mode/test_readiness.py tests/isolation -q`.** Expected: PASS; host acceptance remains clearly distinct from isolation.
+- [x] **Step 1: Write failing tests** for accepted mode not equaling readiness, unknown/public repository denied, explicit Setu-mobile public exception, owner-controlled private repo allowed only when allowlisted and integration-enabled, forks denied, author/draft/closed/config/SHA/budget failures denied, and exact `opencode/...` model allowlisting.
+- [x] **Step 2: Run `py -m pytest tests/host_mode/test_readiness.py tests/isolation -q`.** Observed: FAIL because host readiness types do not exist and the old gate contract remains.
+- [x] **Step 3: Implement typed readiness/policy validation** without any bool bypass. Require the exact public exception and exact case-sensitive owner/repo/model entries.
+- [x] **Step 4: Add tests** that an unmerged config, remote config allowlist, arbitrary provider ID, or empty local allowlist never produces ready status.
+- [x] **Step 5: Run `py -m pytest tests/host_mode/test_readiness.py tests/isolation -q`.** Observed: PASS; host acceptance remains clearly distinct from isolation.
 - [ ] **Step 6: Commit** only after the updated spec and plan have been reviewed and the user selects execution mode.
 
 ### Task 2: Implement the one-shot command broker and approval UI
@@ -138,7 +138,7 @@
 - Worktree manager establishes a unique PR/SHA worktree under a managed root and validates the owner's active checkout remains unchanged.
 - OpenCode launch requires readiness and selected-model membership; all shell requests route through the verified broker.
 
-- [ ] **Step 1: Write failing tests** proving composition/config publisher cannot accept a boolean or historical GO report, and only a passing readiness result enables launch.
+- [x] **Step 1: Write failing tests** proving composition/config publisher cannot accept a boolean or historical GO report, and only a passing readiness result enables launch.
 - [ ] **Step 2: Test worktree isolation as repository-state hygiene:** snapshot active checkout HEAD/branch/status, create/use/cancel a separate worktree, and assert the active checkout is unchanged.
 - [ ] **Step 3: Test publication** preserves existing structure/scope checks and exact remote starting-SHA comparison; retain normal fast-forward only, no force push/main, and no local Gradle invocation.
 - [ ] **Step 4: Replace UI/config gate wiring** with the typed host-mode readiness contract; keep allowlists and owner acceptance out of remote config PRs.
