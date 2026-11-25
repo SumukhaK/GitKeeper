@@ -12,9 +12,11 @@ happens on the owner's Windows machine.
 > **Status: pre-alpha, not safe to launch workers yet.**
 > The design contract, the desktop UI foundation, typed host-mode readiness, the
 > local model ladder, the patch-scope gate, the one-shot command approval broker,
-> and OpenCode command mediation are implemented and tested. The queue, GitHub
-> reconciliation, and worktree lifecycle are **not** implemented, so worker
-> execution stays disabled on purpose. No queue code is merged yet.
+> and OpenCode command mediation are implemented and tested. Queue domain
+> contracts are implemented, but SQLite persistence, GitHub reconciliation, and
+> the worktree lifecycle are **not** implemented, so worker execution stays
+> disabled on purpose. Slice 1 delivery is tracked in
+> [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15).
 
 ## What works today
 
@@ -29,13 +31,13 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 independently approved, PR pending; slices 2–7 pending |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 independently approved in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15); slices 2–7 pending |
 | Queue, leases, GitHub label reconciliation, worktrees | Queue domain contracts implemented; persistence, leases, reconciliation, and worktrees not implemented; no queue code merged |
 | Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — merged plan; implementation pending |
 
 ## Queue implementation status
 
-The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). Planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds and approval of `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Slice 1 (domain contracts and readiness-reason adapter) is implemented at `6be6122`, with the reviewed telemetry projection corrected at `f44ed8b`; 199 queue tests, 236 combined queue/readiness tests, and 564 full-suite tests pass. It passed scoped independent re-review and awaits PR/merge. Slices 1–3 fulfill original Task 1 and slices 4–7 fulfill original Task 2. No queue code is merged. Source-plan Tasks 3–5 have a separate merged [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes worker enablement.
+The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). Planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds and approval of `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Slice 1 (domain contracts and readiness-reason adapter) is implemented at `6be6122`, with the reviewed telemetry projection corrected at `f44ed8b`; 199 queue tests, 236 combined queue/readiness tests, and 564 full-suite tests pass. It passed scoped independent re-review; delivery is tracked in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15). Slices 1–3 fulfill original Task 1 and slices 4–7 fulfill original Task 2. Source-plan Tasks 3–5 have a separate merged [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes worker enablement.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |

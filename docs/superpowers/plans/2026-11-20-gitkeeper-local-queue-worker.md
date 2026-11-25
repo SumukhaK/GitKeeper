@@ -12,11 +12,11 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The initial P0 documentation draft passed its original review; the combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is now in correction/re-review and must not merge until a fresh reviewer approves the exact current head. No queue code is merged or independently reviewed.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0`. Slice 1's queue domain contracts are independently approved in [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15); slices 2–7 remain pending and worker execution stays disabled.
 
 | Original task | Detailed plan / slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | pending | — | — |
+| Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | slice 1 independently approved; slices 2–3 pending | [#15](https://github.com/SumukhaK/GitKeeper/pull/15) | see PR |
 | Task 2 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 4–7 | pending | — | — |
 | Task 3 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
 | Task 4 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
