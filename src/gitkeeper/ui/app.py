@@ -8,6 +8,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 
+from gitkeeper.policy.models import load_ladder
 from gitkeeper.ui.viewmodels.queue import QueueViewModel
 from gitkeeper.ui.viewmodels.settings import SettingsViewModel
 from gitkeeper.ui.viewmodels.status import StatusViewModel
@@ -33,7 +34,9 @@ def main(
     QQuickStyle.setStyle("Basic")
     application = QGuiApplication(list(argv) if argv is not None else sys.argv)
     status_view_model, queue_view_model = create_viewmodels(queue_service)
-    settings_view_model = SettingsViewModel(config_publisher)
+    settings_view_model = SettingsViewModel(
+        config_publisher, model_ladder=load_ladder()
+    )
     telemetry_view_model = TelemetryViewModel(telemetry_service)
     if telemetry_service is not None:
         telemetry_view_model.refresh()
