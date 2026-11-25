@@ -21,8 +21,11 @@
 - GitHub labels are `gitkeeper/worker-queued`, `gitkeeper/worker-running`, and `gitkeeper/worker-blocked`.
 - The PR author is eligible for automatic worker execution only when the GitHub login is exactly `SumukhaK` and the PR head branch is in `SumukhaK/Setu-mobile` itself. Other authors and all fork PRs receive secret-free CI only.
 - The automatic invocation budget is three per open/reopen cycle across head-SHA changes; reopen resets the budget while preserving history. Explicit retries after escalation are user-triggered; no automatic model fallback is used.
-- Worker execution remains disabled until the Windows OS-isolation prototype passes; the default merged config keeps it disabled until the user enables it after that gate.
-- The exact OpenCode model ID is user-selected; the plan does not guess or hard-code one.
+- `SumukhaK/Setu-mobile` is the owner's explicit public-repository exception in the local host-mode allowlist. Forks/external PR heads and all other authors are never worker-eligible.
+- The default merged config keeps `worker_enabled` false. Enabling this flag cannot override local `ACCEPTED_HOST_MODE` readiness, the companion's repository/model allowlists, or the per-command confirmation gate.
+- OpenCode model IDs and the exact `opencode/...` subscription allowlist are local-only; do not include them in Setu-mobile config or guess any subscription ID.
+- The owner has accepted host execution on Windows 10 Home. This is not OS isolation or a separate-user credential boundary; OpenCode and approved commands may access host files and credentials available to the owner account.
+- Every worker-requested host shell command requires one explicit companion approval; if OpenCode CLI 1.19.6 command interception is not proven complete, the companion does not launch a worker.
 - An explicitly identified deterministic check failure queues repair for that SHA; passing checks mean ready/no worker; infrastructure, cancellation, missing, or unknown outcomes block for human action.
 - The state workflow must not check out PR code, download or consume PR-produced artifacts, or execute PR-controlled scripts.
 - Configuration is read only from the default branch. Invalid or unmerged config cannot alter Actions or worker behavior.
@@ -33,7 +36,7 @@
 - Fork PR or author mismatch must receive CI but receive no GitKeeper worker label: Task 2 policy tests assert no worker label for both cases.
 - A known deterministic check failure versus a runner/setup failure must classify differently: Task 2 classifier tests assert queued only for the former and blocked for the latter.
 - Completion for a superseded head SHA must not change labels: Task 2 stale-SHA test asserts no queue transition.
-- Config from an unmerged PR or with unknown/permission-bearing keys must not influence worker eligibility: Task 1 rejects bad values; Task 2 workflow-contract tests assert config is read from the default branch only.
+- Config from an unmerged PR or with unknown/permission-bearing keys must not influence worker eligibility: Task 1 rejects bad values; Task 2 workflow-contract tests assert config is read from the default branch only. No config value can set host mode or repository/model allowlists.
 - The privileged workflow must not run or import PR-controlled content: Task 2 workflow-contract test and `actionlint` checks pin the no-checkout/no-artifact rule.
 
 ---
@@ -42,13 +45,13 @@
 
 - Create `.github/workflows/gitkeeper-pr-ci.yml` — secret-free read-only Android PR CI on `opened` and `synchronize` (including companion PR-branch pushes).
 - Create `.github/workflows/gitkeeper-state.yml` — default-branch `workflow_run` classifier and narrow label writer.
-- Create `.github/gitkeeper.json` — merged-default-branch-only worker enablement, user-selected model ID, polling/motion preferences, and fixed eligibility/check identifiers.
+- Create `.github/gitkeeper.json` — merged-default-branch-only worker enablement, polling/motion preferences, and fixed eligibility/check identifiers. It contains no model IDs or host/repository allowlists.
 - Create `.github/scripts/classify-run.mjs` — pure allowlisted run-result and PR-metadata classifier.
 - Create `.github/scripts/validate-config.mjs` — strict config schema validator.
 - Create `tests/workflows/classify-run.test.mjs` — actor/fork/SHA/outcome/label classifier tests.
 - Create `tests/workflows/validate-config.test.mjs` — valid, invalid, unknown-key, and privilege-key config tests.
 - Create `tests/workflows/workflow-contract.test.mjs` — workflow event, permission, default-config source, and no-PR-execution assertions.
-- No existing `.github/workflows` directory or GitKeeper source module is assumed.
+- Setu-mobile currently has no `.github/workflows` directory; add the workflow files listed above. Its Android README documents the exact Gradle test command.
 
 ## Interfaces
 
@@ -57,7 +60,7 @@
 - `RunClassificationInput` contains `repository`, PR number/open/draft state, author login, head-repository full name, current head SHA, source workflow identity, check runs each bound to a SHA and conclusion, and default-branch `PilotConfig`.
 - `WorkerLabel = "gitkeeper/worker-queued" | "gitkeeper/worker-running" | "gitkeeper/worker-blocked"`. Only the companion sets `worker-running`; Actions may set queued/blocked or clear an obsolete label.
 - `StateDecision` contains `state: "ready" | "queued" | "blocked" | "ineligible" | "stale"`, repository, PR number, current head SHA, `label: WorkerLabel | null`, and a categorized reason. `ineligible` and `stale` have no label and cause no label write. It never trusts a PR-provided label/config value as eligibility input.
-- **Configuration contract:** `.github/gitkeeper.json` contains `worker_enabled`, a user-selected `opencode_model_id` (nullable until selected; never guessed), `polling_preferences: {"mode":"adaptive"}`, `motion_preference` (`null`, `reduced`, or `disabled`), and exact recognized check identifiers. Unknown keys and values that imply permissions, credentials, or arbitrary commands are rejected. The config must be merged to the default branch before it can affect Actions or companion behavior.
+- **Configuration contract:** `.github/gitkeeper.json` contains `worker_enabled`, `polling_preferences: {"mode":"adaptive"}`, `motion_preference` (`null`, `reduced`, or `disabled`), and exact recognized check identifiers. Unknown keys and values that imply permissions, credentials, models, host-mode acceptance, repository/model allowlists, or arbitrary commands are rejected. The config must be merged to the default branch before it can affect Actions or companion behavior. It cannot authorize host execution; local readiness and per-command approvals remain mandatory.
 - **Downstream contract:** The companion treats GitHub labels as a state projection and rechecks author, head repository, PR state, head SHA, merged config, and check/feedback reason before local claim.
 
 ### Task 1: Add merged-only pilot config and validator
@@ -70,12 +73,12 @@
 **Interfaces:**
 - Consumes: JSON object loaded by a caller from the default branch.
 - Produces: `validateConfig(value: unknown): { valid: true; config: PilotConfig } | { valid: false; errors: string[] }`.
-- `PilotConfig` includes `worker_enabled: boolean`, `opencode_model_id: string | null`, `polling_preferences: { mode: "adaptive" }`, `motion_preference: null | "reduced" | "disabled"`, and an allowlist of exact deterministic check identifiers; it cannot encode tokens, extra Actions permissions, or arbitrary commands.
+- `PilotConfig` includes `worker_enabled: boolean`, `polling_preferences: { mode: "adaptive" }`, `motion_preference: null | "reduced" | "disabled"`, and an allowlist of exact deterministic check identifiers; it cannot encode tokens, extra Actions permissions, host-mode acceptance, repository/model allowlists, model IDs, or arbitrary commands.
 
-- [ ] **Step 1: Write config validator tests** for the valid default config, disabled config, null and explicitly selected model IDs (without asserting any guessed ID), polling/motion settings, non-object input, missing/incorrect fields, unknown keys, and a credential/permission/command key.
+- [ ] **Step 1: Write config validator tests** for the valid default config, disabled config, polling/motion settings, non-object input, missing/incorrect fields, unknown keys, and credential/permission/command/model/host-mode/repository-allowlist keys.
 - [ ] **Step 2: Run the tests and verify failure.** Run in Setu-mobile: `node --test tests/workflows/validate-config.test.mjs`. Expected: FAIL because validator/config are absent.
 - [ ] **Step 3: Implement the strict JSON validator** in `.github/scripts/validate-config.mjs`; reject unknown keys and never coerce invalid values.
-- [ ] **Step 4: Add the minimal `.github/gitkeeper.json` default** with worker execution disabled and no model ID selected until the user chooses one; include only validated polling/motion preferences and recognized check IDs.
+- [ ] **Step 4: Add the minimal `.github/gitkeeper.json` default** with worker execution disabled; include only validated polling/motion preferences and recognized check IDs. Keep all model/repository policy local to the companion.
 - [ ] **Step 5: Run `node --test tests/workflows/validate-config.test.mjs`.** Expected: PASS for all valid/invalid config cases.
 - [ ] **Step 6: Commit** the config, validator, and tests in Setu-mobile.
 

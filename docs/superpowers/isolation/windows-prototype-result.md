@@ -1,5 +1,7 @@
 # Windows Isolation Prototype Result
 
+> **Historical status:** This NO-GO result is superseded as the pilot's operating gate by the owner's explicit `ACCEPTED_HOST_MODE` risk decision. It is not a GO, does not claim that isolation was achieved, and the evidence below remains unchanged.
+
 **Decision: NO-GO**
 
 **Recorded:** 2026-11-20
@@ -16,6 +18,12 @@
 
 This document is the durable record of the capability findings and stop decision. No probe evidence artifacts exist because probing did not begin.
 
-## Gate outcome
+## Historical gate outcome (at time of evaluation)
 
-The host cannot establish the required operating-system isolation boundary or prove OpenCode credential separation. The result is therefore NO-GO, not an inconclusive pass. Do not launch automatic or user-triggered worker execution, and do not treat prompt instructions, repository allowlists, or a worktree as security enforcement. Re-evaluate only after a supported isolation prototype and the selected OpenCode credential-boundary probe can be run and produce complete evidence.
+At the time of this evaluation, the host could not establish the required operating-system isolation boundary or prove OpenCode credential separation. The result was NO-GO, not an inconclusive pass. No automatic or user-triggered worker execution was authorized by this result.
+
+## Subsequent owner decision
+
+The owner later explicitly accepted host execution on Windows 10 Home and waived the OS-isolation and separate-user credential-boundary requirements for this pilot. That decision supersedes the requirement to produce an isolation GO, but it does not change the NO-GO evidence above or create an isolation claim.
+
+Worker readiness is now governed by the accepted host-mode design and remains blocked until its local owner policies and OpenCode command-broker capability are verified. If OpenCode CLI `1.19.6` cannot be proven to mediate every worker-requested shell command through fresh companion approval, worker execution stays disabled. A repository allowlist, model allowlist, prompt, worktree, and approval UI do not confine host access.
