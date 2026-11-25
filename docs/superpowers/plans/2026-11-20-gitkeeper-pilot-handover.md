@@ -17,9 +17,9 @@
 | Area | Status | Evidence / remaining work |
 |---|---|---|
 | Pilot architecture and boundaries | Complete | The accepted spec defines GitHub Actions, local companion/worker responsibilities, trusted/untrusted boundaries, state transitions, telemetry, and pilot acceptance criteria. |
-| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, and focused tests. Current working-tree verification: `py -m pytest -q` — 181 passed. Real queue/worker and host-readiness wiring is still pending. |
+| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, and focused tests. Current working-tree verification: `py -m pytest -q` — 220 passed. Real queue/worker and host-readiness wiring is still pending. |
 | Setu-mobile Actions/config | Implemented; remote runtime partly verified | PR #19 contains strict config validation, secret-free PR CI, and a default-branch state classifier/label writer. Both current PR checks pass. The state workflow's label behavior and fork-PR runtime behavior still need live verification after the workflow is on the default branch. Do not merge this PR without the owner's review/authorization. |
-| Accepted Windows host mode | Decision accepted; fail-closed UI gate in progress | The owner accepted direct execution on their Windows 10 Home account and waived VM/WSL2/Sandbox and separate-user boundaries. Config publication now rejects `worker_enabled: true` until OpenCode command mediation is proven; the historical isolation report is no longer an authorization input. Typed readiness, repository allowlist, broker, and end-to-end tests remain pending. Never call this isolation or a sandbox. |
+| Accepted Windows host mode | Decision accepted; typed readiness implemented | The owner accepted direct execution on their Windows 10 Home account and waived VM/WSL2/Sandbox and separate-user boundaries. `src/gitkeeper/host_mode/readiness.py` now computes readiness from typed facts and names every refusal: allowlist, privacy, fork head, exact author, open/non-draft, merged config, repair reason, stale check SHA, attempt budget, local model ladder, CLI 1.19.6, and proven command broker. Config publication still rejects `worker_enabled: true`, the historical isolation report is documented as evidence only, and `gitkeeper.isolation` cannot gate host mode. Still pending: wiring this status into the UI/queue, the broker, and the CLI capability probe. Never call this isolation or a sandbox. |
 | OpenCode command mediation | Not proven; blocking | The installed CLI is OpenCode `1.19.6`. `opencode run` is not an acceptable approval path: it rejects permission requests by default, while `--auto` auto-approves them. A companion-owned `opencode serve` permission-event/reply path is only a candidate until it is exercised through the UI and shown to fail closed. |
 | Local queue and worker | Not implemented | Build SQLite-backed leases/telemetry, GitHub reconciliation, label-state transitions, per-PR/SHA worktrees, cancellation, stale-head handling, and the three-invocation budget per open/reopen cycle. Keep stale worktrees for user recovery. |
 | Worker publication | Policy resolved; enforcement implemented | The owner delegated and approved a machine-checkable patch-scope rule, now recorded in the spec section "Patch scope rule for publication" and enforced by `src/gitkeeper/policy/patch_scope.py`. It fails closed with enumerated reason codes: worktree identity, 10 files / 400 total lines / 150 per-file limits, no deletions/renames/submodules/symlinks/binary/mode changes, allowlisted paths with a denylist that wins, a manifest capability rule, test-change and secret-scan intent checks, then a remote re-query before a fast-forward-only push. The thresholds are code constants so a config PR cannot widen them. Still missing: the git adapter that builds these decisions from a real worktree, and the control-plane commit/push step. |
@@ -58,10 +58,35 @@
 - `README.md` documents the current state, commands, the two code-enforced policy gates, the
   repository layout, and a reading order for the next contributor, so the repository is
   self-explanatory without this tracker.
-- Full current suite: `py -m pytest -q` — 181 passed.
+- Full current suite: `py -m pytest -q` — 220 passed.
 - Still unproven: the git adapter that builds scope decisions from a real worktree, and the
   control-plane commit/push path. No worker may launch until OpenCode command mediation is
   proven; this slice adds policy only.
+
+## Host readiness slice verification
+
+- Tests were written first and observed failing without the implementation: with
+  `src/gitkeeper/host_mode/` renamed away, `py -m pytest tests/host_mode -q` reported
+  37 failed / 37 collected (`ModuleNotFoundError: No module named 'gitkeeper.host_mode'`);
+  with it restored, 37 passed.
+- `tests/host_mode/test_readiness.py` covers: `ACCEPTED_HOST_MODE` never reported as
+  isolation; rejection of any other mode label; empty allowlist; unknown and non-`opencode/`
+  models; unmapped policy keys; public exceptions and verified private repositories that are
+  not allowlisted, and overlap between the two; unknown, case-mismatched, and
+  privacy-unverified repositories; fork heads; non-owner and case-mismatched authors; closed
+  and draft PRs; unmerged and disabled config; a remote config that tries to define a
+  repository allowlist or model ladder; missing repair reason; unknown repair reason values;
+  stale and missing check SHAs; exhausted budget and its explicit-retry override; missing
+  ladder; wrong and missing CLI versions; unproven broker; a capability that self-reports a
+  broker gap; aggregated blockers; `require_worker_ready`; and that no boolean or
+  `IsolationReport` can be substituted for typed capability.
+- `tests/isolation/test_report.py` gained two checks: the retired report module is documented
+  as unable to authorize a launch, and a passing `IsolationReport` is rejected by
+  `evaluate_worker_readiness` with `TypeError` in every argument position.
+- Full current suite: `py -m pytest -q` — 220 passed. `git diff --check` passed.
+- Deliberately not in this slice: the command broker, the approved-command UI, the OpenCode
+  1.19.6 capability probe, and wiring `HostModeStatus` into `queue.py`/`settings.py`. Worker
+  launch therefore stays disabled.
 
 ## Approved decisions that must not be re-litigated
 
@@ -92,7 +117,7 @@ repository front page accurate.
 
 Follow the detailed task lists in the linked plans, in this order:
 
-1. **Host readiness and local policy:** implement typed readiness that distinguishes accepted risk from readiness. Use the now-resolved model ladder (`gitkeeper.policy.models`) and the resolved patch-scope rule (`gitkeeper.policy.patch_scope`). Enforce the exact repository allowlist, ladder membership, same-repository head, exact author, open/non-draft state, merged config, current SHA, attempt budget, CLI version, and broker capability.
+1. **Host readiness and local policy:** implement typed readiness that distinguishes accepted risk from readiness. Use the now-resolved model ladder (`gitkeeper.policy.models`) and the resolved patch-scope rule (`gitkeeper.policy.patch_scope`). Enforce the exact repository allowlist, ladder membership, same-repository head, exact author, open/non-draft state, merged config, current SHA, attempt budget, CLI version, and broker capability. **Done:** `src/gitkeeper/host_mode/readiness.py` plus `tests/host_mode/test_readiness.py`; wiring into the UI and queue is item 6.
 2. **Approval broker and UI:** add immutable request display and one-use approve/deny handling. Deny by default on timeout, disconnect, stale PR/SHA, request changes, replay, or incomplete rendering.
 3. **OpenCode capability proof:** test the exact installed `1.19.6` path with the companion UI in a disposable non-repository directory. Verify approval, denial, request mutation, and bypass resistance. If any shell path can bypass approval, record `UNSUPPORTED`/NO-GO and keep worker launch disabled.
 4. **Queue/worker:** implement SQLite leases and recovery, GitHub polling/reconciliation, label states, per-PR/SHA worktrees, stale-head/close cancellation, bounded attempts, and explicit retry. Preserve worktrees on crash/rate-limit/escalation.
@@ -108,4 +133,5 @@ Follow the detailed task lists in the linked plans, in this order:
 - `docs/superpowers/plans/2026-11-20-gitkeeper-companion-ui.md` — companion view models, pet/panel, config UI, telemetry, and integration tasks.
 - `docs/superpowers/plans/2026-11-20-setu-mobile-actions-config.md` — Actions/config implementation and live verification tasks.
 - `docs/superpowers/isolation/windows-prototype-result.md` — original isolation NO-GO evidence and its accepted-host-mode interpretation. Preserve the NO-GO result; do not rewrite it as a pass.
+- `src/gitkeeper/host_mode/readiness.py` — the single launch gate for `ACCEPTED_HOST_MODE`; read this before touching worker startup.
 - `.superpowers/sdd/` — local, ignored execution ledgers may contain more detailed per-task notes, but are not the durable handoff source. Keep this tracked document and the plans accurate for remote handoff.

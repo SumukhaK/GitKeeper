@@ -107,6 +107,55 @@ def test_unconfigured_model_cannot_return_go(tmp_path):
     assert report.verdict == "NO_GO"
 
 
+def test_historical_report_is_documented_as_unable_to_authorize_a_launch():
+    from gitkeeper.isolation import report as report_module
+
+    assert "ACCEPTED_HOST_MODE" in report_module.__doc__
+    assert "never evidence that the current host is isolated" in report_module.__doc__
+
+
+def test_passing_report_cannot_be_used_as_a_readiness_argument(tmp_path):
+    from gitkeeper.host_mode import readiness
+    from gitkeeper.isolation.report import isolation_passes
+
+    evidence = tmp_path / "summary.json"
+    evidence.write_text("verified probe evidence", encoding="utf-8")
+    report = build_report(evidence_paths=[evidence])
+    assert isolation_passes(report) is True
+
+    sha = "a153271a18241b3cf5b9d5ed7025916c6b11e9f8"
+    arguments = {
+        "facts": readiness.PullRequestFacts(
+            repository="SumukhaK/Setu-mobile",
+            number=19,
+            head_repository="SumukhaK/Setu-mobile",
+            author="SumukhaK",
+            head_sha=sha,
+            check_head_sha=sha,
+            is_open=True,
+            is_draft=False,
+            repair_reason=readiness.RepairReason.DETERMINISTIC_CHECK_FAILURE,
+            automatic_invocations_used=0,
+        ),
+        "config": readiness.WorkerConfiguration(worker_enabled=True, merged=True),
+        "policy": readiness.HostModePolicy.from_mapping(
+            {
+                "mode": "ACCEPTED_HOST_MODE",
+                "repositories": ["SumukhaK/Setu-mobile"],
+                "public_exceptions": ["SumukhaK/Setu-mobile"],
+                "model_ladder": ["opencode/deepseek-v4.1-flash-free"],
+            }
+        ),
+        "capability": readiness.CliCapability("1.19.6", broker_verified=True),
+    }
+    assert readiness.evaluate_worker_readiness(**arguments).ready is True
+
+    for field in ("config", "policy", "capability"):
+        substituted = dict(arguments, **{field: report})
+        with pytest.raises(TypeError):
+            readiness.evaluate_worker_readiness(**substituted)
+
+
 def test_failed_opencode_call_cannot_return_go(tmp_path):
     from gitkeeper.isolation.report import isolation_passes
 

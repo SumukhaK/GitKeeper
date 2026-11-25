@@ -1,3 +1,11 @@
+"""Historical OS-isolation probe evidence for the retired Windows sandbox prototype.
+
+The pilot runs in `ACCEPTED_HOST_MODE`, so nothing in this module authorizes a
+worker launch. A passing report is a record of what an earlier, abandoned
+prototype measured; it is never evidence that the current host is isolated.
+Worker readiness is computed by `gitkeeper.host_mode.readiness` instead.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal

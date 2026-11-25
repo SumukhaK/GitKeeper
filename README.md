@@ -10,7 +10,7 @@ repository gets only secret-free GitHub Actions config; every privileged action
 happens on the owner's Windows machine.
 
 > **Status: pre-alpha, not safe to launch workers yet.**
-> The design contract, the desktop UI foundation, host-mode readiness rules, the
+> The design contract, the desktop UI foundation, typed host-mode readiness, the
 > local model ladder, and the patch-scope gate are implemented and tested. The
 > queue, GitHub reconciliation, worktree lifecycle, and OpenCode command broker
 > are **not** implemented, so worker execution stays disabled on purpose.
@@ -22,7 +22,7 @@ happens on the owner's Windows machine.
 | Design spec and decisions | Complete — [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) |
 | Handover tracker | Complete — [`docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md`](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) |
 | Companion UI (fox pet, handscroll, queue/status/settings/telemetry pages) | Built against fakes, integration pending |
-| Host-mode readiness policy | Complete (`src/gitkeeper/isolation/`) — `ACCEPTED_HOST_MODE` gate, launch blocked |
+| Host-mode readiness policy | Complete (`src/gitkeeper/host_mode/readiness.py`) — typed `ACCEPTED_HOST_MODE` gate, launch blocked |
 | Local model ladder and quota classification | Complete (`src/gitkeeper/policy/models.py`) |
 | Patch-scope publication rule | Complete (`src/gitkeeper/policy/patch_scope.py`) |
 | Queue, leases, GitHub label reconciliation, worktrees | Not implemented |
@@ -52,7 +52,8 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (181 tests) |
+| `py -m pytest -q` | Full suite (220 tests) |
+| `py -m pytest tests/host_mode -q` | Typed host-mode readiness blockers |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |
 
@@ -84,7 +85,17 @@ flowchart LR
   read-only on `pull_request`; only PRs authored by the owner are worker
   eligible. GitKeeper never accepts credentials from a repository config PR.
 
-### The two code-enforced policy gates
+### The three code-enforced gates
+
+`gitkeeper.host_mode.readiness` — the launch gate:
+
+- `ACCEPTED_HOST_MODE` is a risk decision, not isolation, and never yields
+  readiness on its own.
+- Every refusal is named: allowlist, privacy, fork head, author, open/draft,
+  merged config, repair reason, stale check SHA, attempt budget, model ladder,
+  CLI version, and unproven command broker.
+- Readiness is computed from explicit GitHub and local facts; there is no
+  boolean bypass, and historical isolation reports cannot authorize a launch.
 
 `gitkeeper.policy.models` — the model ladder:
 
@@ -112,10 +123,11 @@ flowchart LR
 
 ```
 src/gitkeeper/
-  isolation/   host-mode readiness report and launch gate
+  host_mode/   typed ACCEPTED_HOST_MODE readiness blockers
+  isolation/   historical Windows-probe evidence, not a launch gate
   policy/      model ladder, quota classification, patch-scope rule
   ui/          view models, services, and QML (fox pet + handscroll panel)
-tests/         policy, isolation, and UI suites plus fakes
+tests/         host_mode, policy, isolation, and UI suites plus fakes
 docs/          design spec, plans, and the handover tracker
 prototypes/    throwaway UI experiments, not shipped
 brainstorm.md  original design notes
