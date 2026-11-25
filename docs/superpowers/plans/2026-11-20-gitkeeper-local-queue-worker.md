@@ -12,15 +12,15 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 has passed fresh independent review and its docs PR is pending; no queue code is merged or independently reviewed.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The initial P0 documentation draft passed its original review; the combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is now in correction/re-review and must not merge until a fresh reviewer approves the exact current head. No queue code is merged or independently reviewed.
 
 | Original task | Detailed plan / slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
 | Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | pending | — | — |
 | Task 2 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 4–7 | pending | — | — |
-| Task 3 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
-| Task 4 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
-| Task 5 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
+| Task 3 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
+| Task 4 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
+| Task 5 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
 
 Original Tasks 1–2 remain unchecked until all mapped slices have merged code and clean review/test evidence. Tasks 3–5 have a detailed handoff plan but remain unchecked and outside the active queue slice. Worker execution stays disabled, with no worktree, OpenCode launch, publication, UI/settings integration, workflow, or Setu-mobile changes authorized.
 
