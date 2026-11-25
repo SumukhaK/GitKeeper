@@ -11,9 +11,9 @@ happens on the owner's Windows machine.
 
 > **Status: pre-alpha, not safe to launch workers yet.**
 > The design contract, the desktop UI foundation, typed host-mode readiness, the
-> local model ladder, the patch-scope gate, and the one-shot command approval
-> broker are implemented and tested. The queue, GitHub reconciliation, worktree
-> lifecycle, and OpenCode command mediation are **not** implemented, so worker
+> local model ladder, the patch-scope gate, the one-shot command approval broker,
+> and OpenCode command mediation are implemented and tested. The queue, GitHub
+> reconciliation, and worktree lifecycle are **not** implemented, so worker
 > execution stays disabled on purpose.
 
 ## What works today
@@ -28,8 +28,9 @@ happens on the owner's Windows machine.
 | Patch-scope publication rule | Complete (`src/gitkeeper/policy/patch_scope.py`) |
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
+| OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
 | Queue, leases, GitHub label reconciliation, worktrees | Not implemented |
-| OpenCode command mediation (real executor) | Not implemented — the real launch gate |
+| Worker wiring (real executor, worktree lifecycle) | Not implemented — needs Task 4 |
 
 ## Quick start
 
@@ -55,8 +56,8 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (318 tests) |
-| `py -m pytest tests/host_mode -q` | Typed host-mode readiness blockers and the command approval broker |
+| `py -m pytest -q` | Full suite (365 tests) |
+| `py -m pytest tests/host_mode -q` | Typed readiness blockers, the approval broker, and OpenCode mediation |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |
 
@@ -117,8 +118,25 @@ flowchart LR
 - Remote facts are re-checked before presenting, after approval, and again at
   execution, so the owner is never asked to bless stale state.
 - Execution itself is deliberately unimplemented: the only executor is
-  `execution_disabled`, which raises. An approval cannot become a process run
-  until OpenCode mediation is proven.
+  `execution_disabled`, which raises. Task 3 proved that OpenCode mediation works;
+  Task 4 wires an executor that may only use it.
+
+`gitkeeper.host_mode.opencode_capability` — the mediation contract:
+
+- The CLI version, the *resolved* configuration (`permission.bash: "ask"`, the
+  broker as the only plugin, no MCP servers) and a persisted live-probe record
+  must all agree before `Broker` counts as verified; any gap keeps the launch
+  blocked.
+- The plugin entry is compared by module name, because `opencode debug config`
+  reports absolute plugins as `file://` URLs.
+- `require_inert_worktree` refuses a worktree containing `.opencode`, which the
+  CLI scans for plugins outside the project-config guard; the launcher also clears
+  `OPENCODE_PURE`/`OPENCODE_PERMISSION` and refuses `--auto`/`--pure`.
+- `broker_plugin/gitkeeper-command-broker.mjs` is the hook itself: it forwards the
+  exact command to the companion and throws unless the reply approves *that*
+  request id. Deny, timeout, unreachable host, malformed reply, missing token and
+  an unrecognised shell shape all block. Full evidence in
+  [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md).
 
 `gitkeeper.policy.models` — the model ladder:
 
@@ -146,7 +164,7 @@ flowchart LR
 
 ```
 src/gitkeeper/
-  host_mode/   typed ACCEPTED_HOST_MODE readiness blockers + command approval broker
+  host_mode/   typed ACCEPTED_HOST_MODE readiness blockers, approval broker, OpenCode mediation
   isolation/   historical Windows-probe evidence, not a launch gate
   policy/      model ladder, quota classification, patch-scope rule
   ui/          view models, services, and QML (fox pet + handscroll panel)
@@ -164,7 +182,7 @@ Read, in order:
 2. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved contract.
 3. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
 
-The next slice is OpenCode command mediation: prove that CLI 1.19.6 routes every
-shell request through the one-shot companion approval that Task 2 now provides and
-cannot bypass it. Until that is proven, worker execution must remain disabled —
-`command_broker.execution_disabled` refuses every launch on purpose.
+The next slice is Task 4: wire the typed capability into composition, establish the
+worktree lifecycle, and replace `command_broker.execution_disabled` with an
+executor that launches only a verified CLI in an inert worktree. Until then worker
+execution must remain disabled.

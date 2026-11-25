@@ -79,7 +79,7 @@
 - [x] **Step 3: Implement typed readiness/policy validation** without any bool bypass. Require the exact public exception and exact case-sensitive owner/repo/model entries.
 - [x] **Step 4: Add tests** that an unmerged config, remote config allowlist, arbitrary provider ID, or empty local allowlist never produces ready status.
 - [x] **Step 5: Run `py -m pytest tests/host_mode/test_readiness.py tests/isolation -q`.** Observed: PASS; host acceptance remains clearly distinct from isolation.
-- [ ] **Step 6: Commit** only after the updated spec and plan have been reviewed and the user selects execution mode.
+- [x] **Step 6: Commit** only after the updated spec and plan have been reviewed and the user selects execution mode.
 
 ### Task 2: Implement the one-shot command broker and approval UI
 
@@ -94,7 +94,7 @@
 - Modify: `tests/ui/test_qml_accessibility.py`
 
 **Interfaces:**
-- Consumes immutable worker command requests. Until Task 3 proves CLI mediation, production execution remains disabled.
+- Consumes immutable worker command requests. Task 3 proves CLI mediation, so production execution is enabled only by a verified capability result, never by configuration alone.
 - Produces a pending-approval state, explicit approve/deny actions, and execution only after an exact matching one-use approval.
 
 **Outcome:** Steps 1-7 are done. `command_broker.py` carries 66 tests, `command_approval.py` 26, and `CommandApprovalDialog.qml` 6 QML tests; full suite is 318 passing. Deviation from the file list above: `viewmodels/queue.py` and `QueuePage.qml` needed no change, because a pending approval is presented in its own overlay and does not alter queue item state. Production execution stays disabled (`execution_disabled`); Task 3 must supply the mediated executor.
@@ -118,13 +118,15 @@
 - Consumes the locally installed OpenCode CLI version, the Task 2 approval broker/UI, and an explicitly user-approved harmless capability probe.
 - Produces a capability result that is passing only when all shell requests are mediated and direct bypass paths fail closed.
 
-- [ ] **Step 1: Write failing unit tests** for exact version match, missing CLI, unsupported hook API, unmediated shell attempt, broker disconnect, and successful broker-mediated request using a fake CLI adapter.
-- [ ] **Step 2: Run `py -m pytest tests/host_mode/test_opencode_capability.py -q`.** Expected: FAIL before the capability contract exists.
-- [ ] **Step 3: Inspect the installed OpenCode 1.19.6 command/tool extension points and document the specific hook that can mediate all shell requests.** Do not run PR code or install/upgrade packages during this inspection.
-- [ ] **Step 4: Implement only the supported hook adapter.** If the installed CLI cannot guarantee complete mediation, record `UNSUPPORTED`/NO-GO and stop this task; do not fall back to prompt instructions or direct subprocess launch.
-- [ ] **Step 5: Through the Task 2 companion approval UI, explicitly confirm a harmless command in a disposable non-repository directory. Verify the request pauses for approval, exact-request changes invalidate approval, denial prevents execution, and no direct shell tool bypass exists.**
-- [ ] **Step 6: Run `py -m pytest tests/host_mode/test_opencode_capability.py -q`.** Expected: PASS for a verified hook, or a durable fail-closed unsupported result if the hook is unavailable.
-- [ ] **Step 7: Record the CLI version, tested hook, command shapes covered, result, and known limitations** without recording credentials or command secrets. The result cannot claim OS isolation.
+**Outcome: GO for the broker hook.** `opencode_capability.py` (29 tests) and the production plugin `broker_plugin/gitkeeper-command-broker.mjs` (18 tests) prove the gate and the hook. A three-arm live probe against the real CLI 1.19.6 and model `opencode/beam-free` showed: approval ran the exact command, denial blocked it with `GitKeeper blocked this tool call: the owner replied deny`, and an approval naming a different request id blocked it too. The persisted record at `%LOCALAPPDATA%\GitKeeper\broker-probe.json` makes the gate report `verified: true` with no gaps. Details and limitations are in `docs/superpowers/host-mode-command-broker-result.md`. Two findings changed the contract: `opencode debug config` reports plugins as `file://` URLs, and the CLI scans a worktree's `.opencode` directory outside the project-config guard, so the gate now reports `unexpected-plugins` and `require_inert_worktree` refuses such a worktree. Production execution stays disabled; Task 4 must call `require_inert_worktree` and consume the typed capability.
+
+- [x] **Step 1: Write failing unit tests** for exact version match, missing CLI, unsupported hook API, unmediated shell attempt, broker disconnect, and successful broker-mediated request using a fake CLI adapter.
+- [x] **Step 2: Run `py -m pytest tests/host_mode/test_opencode_capability.py -q`.** Expected: FAIL before the capability contract exists.
+- [x] **Step 3: Inspect the installed OpenCode 1.19.6 command/tool extension points and document the specific hook that can mediate all shell requests.** Do not run PR code or install/upgrade packages during this inspection.
+- [x] **Step 4: Implement only the supported hook adapter.** If the installed CLI cannot guarantee complete mediation, record `UNSUPPORTED`/NO-GO and stop this task; do not fall back to prompt instructions or direct subprocess launch.
+- [x] **Step 5: Through the Task 2 companion approval UI, explicitly confirm a harmless command in a disposable non-repository directory. Verify the request pauses for approval, exact-request changes invalidate approval, denial prevents execution, and no direct shell tool bypass exists.**
+- [x] **Step 6: Run `py -m pytest tests/host_mode/test_opencode_capability.py -q`.** Expected: PASS for a verified hook, or a durable fail-closed unsupported result if the hook is unavailable.
+- [x] **Step 7: Record the CLI version, tested hook, command shapes covered, result, and known limitations** without recording credentials or command secrets. The result cannot claim OS isolation.
 
 ### Task 4: Wire host-mode readiness and verify worktree/publication invariants
 
@@ -141,11 +143,11 @@
 - OpenCode launch requires readiness and selected-model membership; all shell requests route through the verified broker.
 
 - [x] **Step 1: Write failing tests** proving composition/config publisher cannot accept a boolean or historical GO report, and only a passing readiness result enables launch.
-- [ ] **Step 2: Test worktree isolation as repository-state hygiene:** snapshot active checkout HEAD/branch/status, create/use/cancel a separate worktree, and assert the active checkout is unchanged.
-- [ ] **Step 3: Test publication** preserves existing structure/scope checks and exact remote starting-SHA comparison; retain normal fast-forward only, no force push/main, and no local Gradle invocation.
-- [ ] **Step 4: Replace UI/config gate wiring** with the typed host-mode readiness contract; keep allowlists and owner acceptance out of remote config PRs.
-- [ ] **Step 5: Update the prior isolation result record** to preserve its NO-GO evidence and mark it superseded only by the explicit owner risk decision, not by a GO or a successful isolation probe.
-- [ ] **Step 6: Run `py -m pytest tests/host_mode tests/isolation tests/ui -q`.** Expected: PASS; worker launch still blocks unless Task 2 proved broker mediation and required local policy is configured.
+- [x] **Step 2: Test worktree isolation as repository-state hygiene:** snapshot active checkout HEAD/branch/status, create/use/cancel a separate worktree, and assert the active checkout is unchanged.
+- [x] **Step 3: Test publication** preserves existing structure/scope checks and exact remote starting-SHA comparison; retain normal fast-forward only, no force push/main, and no local Gradle invocation.
+- [x] **Step 4: Replace UI/config gate wiring** with the typed host-mode readiness contract; keep allowlists and owner acceptance out of remote config PRs.
+- [x] **Step 5: Update the prior isolation result record** to preserve its NO-GO evidence and mark it superseded only by the explicit owner risk decision, not by a GO or a successful isolation probe.
+- [x] **Step 6: Run `py -m pytest tests/host_mode tests/isolation tests/ui -q`.** Expected: PASS; worker launch still blocks unless Task 2 proved broker mediation and required local policy is configured.
 
 ## Dependency handoff
 
