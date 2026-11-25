@@ -366,6 +366,24 @@ def queue_event(**overrides):
     return QueueEvent(**values)
 
 
+def telemetry_event(**overrides):
+    values = {
+        "timestamp": LATER,
+        "duration_ms": 300000,
+        "repository": REPOSITORY,
+        "pr_number": 42,
+        "head_sha": SHA40,
+        "from_state": "running",
+        "to_state": "ready",
+        "invocation_count": 1,
+        "outcome": "completed",
+        "model_id": MODEL_ID,
+        "error_category": None,
+    }
+    values.update(overrides)
+    return values
+
+
 def eligibility(**overrides):
     values = {
         "eligible": True,
@@ -514,7 +532,7 @@ EXACT_FIELDS = {
     ReconcileResult: "reports",
     QueueViewAdapter: "item",
     ErrorViewAdapter: "error",
-    TelemetryViewAdapter: "event attempt",
+    TelemetryViewAdapter: "timestamp duration_ms repository pr_number head_sha from_state to_state attempt_count outcome model_id error_category",
     OperationalError: "category message occurred_at",
 }
 
@@ -558,7 +576,6 @@ def test_readiness_imports_are_unchanged_and_config_types_are_precise():
         operational_error(),
         QueueViewAdapter(queue_item()),
         ErrorViewAdapter(operational_error()),
-        TelemetryViewAdapter(queue_event()),
         remote_failure(),
         remote_report(),
         ReconcileResult(reports=()),
@@ -1254,19 +1271,110 @@ def test_error_adapter_uses_only_fixed_category_descriptions():
     assert view.as_mapping() == {"category": "github_unavailable", "message": "GitHub is unavailable.", "occurred_at": NOW.isoformat()}
 
 
-def test_telemetry_adapter_exposes_only_allowlisted_ui_metadata():
-    invocation = attempt(outcome=AttemptOutcome.completed, started_at=NOW, finished_at=LATER, model_id=MODEL_ID)
-    event = QueueEvent.for_attempt(invocation, from_state=WorkerState.running, to_state=WorkerState.ready, event_id=identifier(), occurred_at=LATER)
-    view = TelemetryViewAdapter.from_event(event, attempt=invocation)
+def test_telemetry_adapter_projects_stored_mapping_into_exact_read_only_fields():
+    stored = telemetry_event(diff="DIFF-MUST-NOT-APPEAR", prompt="SECRET")
+    view = TelemetryViewAdapter(stored)
+    expected = {
+        "timestamp": LATER,
+        "duration_ms": 300000,
+        "repository": REPOSITORY,
+        "pr_number": 42,
+        "head_sha": SHA40,
+        "from_state": "running",
+        "to_state": "ready",
+        "attempt_count": 1,
+        "outcome": "completed",
+        "model_id": MODEL_ID,
+        "error_category": None,
+    }
     assert isinstance(view, Mapping)
-    assert set(view) == {"timestamp", "duration_ms", "repository", "pr_number", "head_sha", "from_state", "to_state", "attempt_count", "outcome", "model_id", "error_category"}
-    assert view["timestamp"] == LATER.isoformat()
-    assert view["duration_ms"] == 300000
-    assert view["attempt_count"] == 1
-    assert view["outcome"] == "completed"
-    assert view["model_id"] == MODEL_ID
-    assert view["error_category"] == ""
-    assert "diff" not in repr(dict(view))
+    assert tuple(view) == tuple(expected)
+    assert dict(view) == expected
+    assert view.as_mapping() == expected
+    assert get_type_hints(TelemetryViewAdapter) == {
+        "timestamp": datetime,
+        "duration_ms": int | None,
+        "repository": str,
+        "pr_number": int,
+        "head_sha": str,
+        "from_state": str,
+        "to_state": str,
+        "attempt_count": int,
+        "outcome": str,
+        "model_id": str | None,
+        "error_category": str | None,
+    }
+    stored["repository"] = "Other/repository"
+    stored["timestamp"] = NOW
+    assert view.repository == REPOSITORY
+    assert view.timestamp == LATER
+    with pytest.raises(TypeError):
+        view["repository"] = "Other/repository"
+    with pytest.raises(FrozenInstanceError):
+        view.timestamp = NOW
+    assert "DIFF-MUST-NOT-APPEAR" not in repr(view)
+    assert "SECRET" not in repr(view)
+
+
+def test_telemetry_adapter_defaults_missing_count_outcome_and_error_category():
+    stored = telemetry_event()
+    del stored["invocation_count"]
+    del stored["outcome"]
+    del stored["error_category"]
+    view = TelemetryViewAdapter(stored)
+    assert view.attempt_count == 0
+    assert view.outcome == "unknown"
+    assert view.error_category is None
+
+
+def test_telemetry_adapter_preserves_prestart_invocation_count_and_utc_enums():
+    local_timezone = timezone(timedelta(hours=5, minutes=30))
+    stored = telemetry_event(
+        attempt_id=identifier(),
+        timestamp=LATER.astimezone(local_timezone),
+        from_state=WorkerState.running,
+        to_state=WorkerState.blocked,
+        invocation_count=0,
+        outcome=AttemptOutcome.model_unavailable,
+        error_category=ErrorCategory.model_unavailable,
+    )
+    view = TelemetryViewAdapter(stored)
+    assert view.timestamp == LATER
+    assert view.timestamp.tzinfo is UTC
+    assert view.from_state == "running"
+    assert view.to_state == "blocked"
+    assert view.attempt_count == 0
+    assert view.outcome == "model_unavailable"
+    assert view.error_category == "model_unavailable"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"timestamp": LATER.isoformat()},
+        {"timestamp": datetime(2026, 11, 25, 12, 0)},
+        {"duration_ms": True},
+        {"duration_ms": -1},
+        {"pr_number": True},
+        {"invocation_count": True},
+        {"invocation_count": -1},
+        {"from_state": "SECRET"},
+        {"to_state": "SECRET"},
+        {"outcome": "SECRET"},
+        {"model_id": "SECRET"},
+        {"error_category": ""},
+        {"error_category": "SECRET"},
+    ],
+)
+def test_telemetry_adapter_rejects_invalid_projection_values(overrides):
+    with pytest.raises(ValueError):
+        TelemetryViewAdapter(telemetry_event(**overrides))
+
+
+def test_telemetry_adapter_rejects_non_mapping_events():
+    for value in (None, [], queue_event()):
+        with pytest.raises(ValueError):
+            TelemetryViewAdapter(value)
 
 
 def test_typed_errors_fix_their_categories_and_reject_raw_data():

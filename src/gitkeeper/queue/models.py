@@ -1279,10 +1279,38 @@ class ErrorViewAdapter:
         }
 
 
-@dataclass(frozen=True)
+def _telemetry_enum(
+    value: object,
+    enum_type: type[Enum],
+    field: str,
+    *,
+    allow_unknown: bool = False,
+) -> str:
+    if isinstance(value, enum_type):
+        return str(value.value)
+    if isinstance(value, str):
+        if allow_unknown and value == "unknown":
+            return value
+        try:
+            return str(enum_type(value).value)
+        except ValueError:
+            pass
+    raise _invalid(field)
+
+
+@dataclass(frozen=True, init=False)
 class TelemetryViewAdapter(Mapping[str, object]):
-    event: QueueEvent
-    attempt: InvocationAttempt | None = None
+    timestamp: datetime
+    duration_ms: int | None
+    repository: str
+    pr_number: int
+    head_sha: str
+    from_state: str
+    to_state: str
+    attempt_count: int
+    outcome: str
+    model_id: str | None
+    error_category: str | None
 
     _KEYS = (
         "timestamp",
@@ -1298,51 +1326,42 @@ class TelemetryViewAdapter(Mapping[str, object]):
         "error_category",
     )
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.event, QueueEvent):
+    def __init__(self, event: Mapping[str, object]) -> None:
+        if not isinstance(event, Mapping):
             raise _invalid("event")
-        if self.attempt is not None:
-            if not isinstance(self.attempt, InvocationAttempt) or not self.event.matches_attempt(self.attempt):
-                raise _invalid("attempt")
-
-    @classmethod
-    def from_event(
-        cls, event: QueueEvent, *, attempt: InvocationAttempt | None = None
-    ) -> TelemetryViewAdapter:
-        return cls(event=event, attempt=attempt)
-
-    @property
-    def duration_ms(self) -> int | None:
-        if self.attempt is None or self.attempt.finished_at is None:
-            return None
-        started_at = self.attempt.started_at or self.attempt.reserved_at
-        return (self.attempt.finished_at - started_at) // timedelta(milliseconds=1)
+        duration_ms = event.get("duration_ms")
+        model_id = event.get("model_id")
+        error_category = event.get("error_category")
+        values = {
+            "timestamp": _utc(event.get("timestamp"), "timestamp"),
+            "duration_ms": None if duration_ms is None else _integer(duration_ms, "duration_ms"),
+            "repository": _repository(event.get("repository")),
+            "pr_number": _integer(event.get("pr_number"), "pr_number", 1),
+            "head_sha": _sha(event.get("head_sha")),
+            "from_state": _telemetry_enum(event.get("from_state"), WorkerState, "from_state"),
+            "to_state": _telemetry_enum(event.get("to_state"), WorkerState, "to_state"),
+            "attempt_count": _integer(event.get("invocation_count", 0), "attempt_count"),
+            "outcome": _telemetry_enum(
+                event.get("outcome", "unknown"),
+                AttemptOutcome,
+                "outcome",
+                allow_unknown=True,
+            ),
+            "model_id": None if model_id is None else _model_id(model_id),
+            "error_category": None if error_category is None else _telemetry_enum(
+                error_category, ErrorCategory, "error_category"
+            ),
+        }
+        for name, value in values.items():
+            object.__setattr__(self, name, value)
 
     def as_mapping(self) -> dict[str, object]:
-        if self.attempt is not None:
-            outcome = self.attempt.outcome.value
-        elif self.event.error is not None:
-            outcome = self.event.error.category.value
-        else:
-            outcome = "unknown"
-        return {
-            "timestamp": self.event.occurred_at.isoformat(),
-            "duration_ms": self.duration_ms,
-            "repository": self.event.repository,
-            "pr_number": self.event.pr_number,
-            "head_sha": self.event.head_sha,
-            "from_state": self.event.from_state.value,
-            "to_state": self.event.to_state.value,
-            "attempt_count": 1 if self.event.attempt_id is not None else 0,
-            "outcome": outcome,
-            "model_id": None if self.attempt is None else self.attempt.model_id,
-            "error_category": "" if self.event.error is None else self.event.error.category.value,
-        }
+        return {key: getattr(self, key) for key in self._KEYS}
 
     def __getitem__(self, key: str) -> object:
         if key not in self._KEYS:
             raise KeyError(key)
-        return self.as_mapping()[key]
+        return getattr(self, key)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._KEYS)
