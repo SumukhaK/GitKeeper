@@ -14,7 +14,7 @@ happens on the owner's Windows machine.
 > local model ladder, the patch-scope gate, the one-shot command approval broker,
 > and OpenCode command mediation are implemented and tested. The queue, GitHub
 > reconciliation, and worktree lifecycle are **not** implemented, so worker
-> execution stays disabled on purpose.
+> execution stays disabled on purpose. No queue code is merged yet.
 
 ## What works today
 
@@ -29,8 +29,24 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue, leases, GitHub label reconciliation, worktrees | Not implemented |
-| Worker wiring (real executor, worktree lifecycle) | Not implemented — needs Task 4 |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — P0 initially approved; review corrections in [#14](https://github.com/SumukhaK/GitKeeper/pull/14), fresh approval pending; slices 1–7 pending |
+| Queue, leases, GitHub label reconciliation, worktrees | Not implemented; no queue code merged |
+| Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — planned; review corrections in [#14](https://github.com/SumukhaK/GitKeeper/pull/14), fresh approval and implementation pending |
+
+## Queue implementation status
+
+The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0's initial independent review passed. Combined docs PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) received five Required findings on `e47b090`, five on `a088da6`, three on `a6f670d`, three on `f2e310f`, two on `f12df43`, and four on `fec5b54`. The seventh correction makes cancelled-intent discovery match recovery tests, requires fresh authoritative validation before publication commits, serializes owner cancellation with publication through one shared lifecycle guard, and blocks launch selection when an exact worktree/commit cannot be associated until an unresolved intent is latched and owner-restored. Earlier observation, closure, retry-latch, typed-404, projection-fence, lock-order, and claim-binding fixes remain in force. Fresh approval of the seventh correction is pending; do not merge any reviewed head. Slices 1–3 fulfill original Task 1; slices 4–7 fulfill original Task 2. No queue code is merged. Source-plan Tasks 3–5 have a separate [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes implementation or worker enablement.
+
+| Slice | Scope | Status | PR | Merge commit |
+| --- | --- | --- | --- | --- |
+| P0 | Publish plan, status tracking, and README/handover correction | re-review pending | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
+| 1 | Domain contracts and readiness-reason adapter | pending | — | — |
+| 2 | SQLite queue/cycle/lease persistence | pending | — | — |
+| 3 | Operational-only telemetry persistence | pending | — | — |
+| 4 | GitHub read/config/label REST adapter | pending | — | — |
+| 5 | Queue service and label/budget transitions | pending | — | — |
+| 6 | Restart/close/reopen reconciliation | pending | — | — |
+| 7 | Adaptive outbound poller | pending | — | — |
 
 ## Quick start
 
@@ -156,7 +172,8 @@ back, which starts the loop again at a new head SHA. Anything else parks the PR 
   execution, so the owner is never asked to bless stale state.
 - Execution itself is deliberately unimplemented: the only executor is
   `execution_disabled`, which raises. Task 3 proved that OpenCode mediation works;
-  Task 4 wires an executor that may only use it.
+  source-plan Task 4 is later, out-of-scope work that may wire an executor only
+  after the queue slices land.
 
 `gitkeeper.host_mode.opencode_capability` — the mediation contract:
 
@@ -218,8 +235,13 @@ Read, in order:
 1. [`brainstorm.md`](brainstorm.md) — the original problem and shape.
 2. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved contract.
 3. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
+4. The [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — the active executable slices and evidence gates.
 
-The next slice is Task 4: wire the typed capability into composition, establish the
-worktree lifecycle, and replace `command_broker.execution_disabled` with an
-executor that launches only a verified CLI in an inert worktree. Until then worker
-execution must remain disabled.
+After P0 receives fresh approval, execute slices 1–7 sequentially. Use a fresh implementer and a
+fresh reviewer for every code slice. No slice is independently reviewed merely
+because P0 or an earlier slice was reviewed. Merge only after that slice's clean
+independent review and passing focused/full tests, and record PR/merge evidence
+before starting the next slice. Source-plan Tasks 3–5 and all worker execution,
+worktree, OpenCode launch,
+publication, UI/settings integration, workflow, and Setu-mobile changes remain out
+of scope. Worker execution must remain disabled.
