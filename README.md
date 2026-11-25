@@ -66,19 +66,56 @@ There is no lint config in the repository yet; keep the existing style
 
 ## How it is meant to work
 
+Every box is tagged with the zone it lives in: **①** the public repository, **②** the
+GitHub label that *is* the queue, **③** this machine. Colour carries meaning too —
+pale rose is the untrusted public surface, amber is waiting, blue is in progress,
+green is local work, lavender is a decision only the owner can make, teal is a
+published change, and the deeper red is a PR that stopped and needs a human.
+
 ```mermaid
-flowchart LR
-    PR[Setu-mobile PR] -->|GitHub Actions labels| Q[Remote queue labels]
-    Q -->|adaptive polling| C[GitKeeper companion]
-    C -->|SQLite lease per repo/PR/head SHA| W[Local OpenCode worker]
-    W -->|every shell request| A{Owner approves once?}
-    A -->|no answer, mismatch, or deny| X[Not run]
-    A -->|approved| K[One-shot command run]
-    K -->|patch-scope gate| G{Allowed?}
-    G -->|yes| P[Commit + fast-forward push]
-    G -->|no| B[Preserve worktree, block, ask owner]
-    P --> PR
+flowchart TB
+    PR(["① PR opened, pushed, or reopened"])
+    CI(["① Android CI · secret-free, read-only"])
+    WAIT[("② worker-queued")]
+    PET(["③ Fox companion polls,<br/>then claims a SQLite lease"])
+    WORKER(["③ OpenCode worker runs,<br/>one run at a time"])
+    LIVE[("② worker-running")]
+    CHECK{"③ Every shell command approved,<br/>and the patch stays in scope?"}
+    PUSH(["③ Commit and fast-forward push"])
+    STOP(["② worker-blocked · worktree kept"])
+
+    PR --> CI
+    PR --> WAIT
+    WAIT --> PET
+    PET --> WORKER
+    WORKER --> LIVE
+    LIVE --> CHECK
+    CHECK -- yes --> PUSH
+    CHECK -- "no, timeout, or cap" --> STOP
+    PUSH -. "new head SHA" .-> PR
+    STOP -. "owner retries" .-> WAIT
+
+    classDef public fill:#fde3df,stroke:#c0392b,stroke-width:1.5px,color:#1d1b18
+    classDef waiting fill:#fdf0d5,stroke:#d99a2b,stroke-width:1.5px,color:#1d1b18
+    classDef active fill:#e5f1fb,stroke:#2f86ce,stroke-width:1.5px,color:#1d1b18
+    classDef local fill:#eef8e7,stroke:#3f8f4e,stroke-width:1.5px,color:#1d1b18
+    classDef decision fill:#f1ecfb,stroke:#7c63d0,stroke-width:1.5px,color:#1d1b18
+    classDef blocked fill:#fce9e7,stroke:#a83a58,stroke-width:1.5px,color:#1d1b18
+    classDef done fill:#e3f5f2,stroke:#2a9d8f,stroke-width:1.5px,color:#1d1b18
+
+    class PR,CI public
+    class WAIT waiting
+    class LIVE active
+    class PET,WORKER local
+    class CHECK decision
+    class STOP blocked
+    class PUSH done
 ```
+
+Read it as one loop. A public PR is queued by a label; this machine claims that head
+SHA; every shell command needs a fresh approval; only an in-scope change is pushed
+back, which starts the loop again at a new head SHA. Anything else parks the PR in
+② `worker-blocked` with the worktree kept, and only an owner retry restarts it.
 
 - **GitHub is authoritative** for PR and queue state; local SQLite only records
   local execution and recovery.
