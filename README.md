@@ -29,17 +29,17 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — P0 in `review`, PR pending; slices 1–7 pending |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — P0 independently approved, PR pending; slices 1–7 pending |
 | Queue, leases, GitHub label reconciliation, worktrees | Not implemented; no queue code merged |
-| Worker wiring (real executor, worktree lifecycle) | Not implemented — source-plan Tasks 3–5 remain out of scope |
+| Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — planned, pending independent review and implementation |
 
 ## Queue implementation status
 
-The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 is in `review` with PR pending. Slices 1–3 fulfill original Task 1; slices 4–7 fulfill original Task 2. No queue code is merged, and source-plan Tasks 3–5 remain out of scope.
+The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 has passed fresh independent review; its docs PR is pending. Slices 1–3 fulfill original Task 1; slices 4–7 fulfill original Task 2. No queue code is merged. Source-plan Tasks 3–5 now have a separate [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; that plan is not approval to implement or enable a worker.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| P0 | Publish plan, status tracking, and README/handover correction | review | PR pending | — |
+| P0 | Publish plan, status tracking, and README/handover correction | review approved | PR pending | — |
 | 1 | Domain contracts and readiness-reason adapter | pending | — | — |
 | 2 | SQLite queue/cycle/lease persistence | pending | — | — |
 | 3 | Operational-only telemetry persistence | pending | — | — |

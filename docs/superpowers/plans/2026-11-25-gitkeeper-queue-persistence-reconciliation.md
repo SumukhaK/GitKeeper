@@ -57,7 +57,7 @@ Statuses: `pending`, `in progress`, `review`, `blocked`, `merged`.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| P0 | This plan, status tracking, and README/handover correction | review | PR pending | — |
+| P0 | This plan, status tracking, and README/handover correction | review approved | PR pending | — |
 | 1 | Domain contracts and readiness-reason adapter | pending | — | — |
 | 2 | SQLite queue/cycle/lease persistence | pending | — | — |
 | 3 | Operational-only telemetry persistence | pending | — | — |
@@ -67,7 +67,7 @@ Statuses: `pending`, `in progress`, `review`, `blocked`, `merged`.
 | 7 | Adaptive outbound poller | pending | — | — |
 | Final | Combined whole-branch review | pending | — | — |
 
-P0 is the planning-docs slice and is in `review` with PR creation pending the controller. Slices 1–3 together fulfill original Task 1 of the [local queue and worker plan](2026-11-20-gitkeeper-local-queue-worker.md); slices 4–7 fulfill original Task 2. Original Tasks 1–2 remain pending until their mapped slices have merged code and clean review/test evidence. No queue code is merged yet. Tasks 3–5 of the source plan remain out of scope, and worker execution stays disabled.
+P0 is the planning-docs slice and has passed fresh independent review; PR creation is pending the controller. Slices 1–3 together fulfill original Task 1 of the [local queue and worker plan](2026-11-20-gitkeeper-local-queue-worker.md); slices 4–7 fulfill original Task 2. Original Tasks 1–2 remain pending until their mapped slices have merged code and clean review/test evidence. No queue code is merged yet. Tasks 3–5 of the source plan are detailed separately in the [worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md), but remain outside this plan's implementation scope, and worker execution stays disabled.
 
 ## File Structure
 

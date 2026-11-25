@@ -12,14 +12,17 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 is in `review` with PR pending; no queue code is merged or independently reviewed.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). P0 has passed fresh independent review and its docs PR is pending; no queue code is merged or independently reviewed.
 
-| Original task | Detailed slices | Status | PR | Merge commit |
+| Original task | Detailed plan / slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| Task 1 | 1–3 | pending | — | — |
-| Task 2 | 4–7 | pending | — | — |
+| Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | pending | — | — |
+| Task 2 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 4–7 | pending | — | — |
+| Task 3 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
+| Task 4 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
+| Task 5 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; review pending | — | — |
 
-Original Tasks 1–2 remain unchecked until all mapped slices have merged code and clean review/test evidence. Tasks 3–5 remain out of scope and unchecked; worker execution stays disabled, with no worktree, OpenCode launch, publication, UI/settings integration, workflow, or Setu-mobile changes authorized.
+Original Tasks 1–2 remain unchecked until all mapped slices have merged code and clean review/test evidence. Tasks 3–5 have a detailed handoff plan but remain unchecked and outside the active queue slice. Worker execution stays disabled, with no worktree, OpenCode launch, publication, UI/settings integration, workflow, or Setu-mobile changes authorized.
 
 ## Global Constraints
 
