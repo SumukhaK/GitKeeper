@@ -11,9 +11,10 @@ happens on the owner's Windows machine.
 
 > **Status: pre-alpha, not safe to launch workers yet.**
 > The design contract, the desktop UI foundation, typed host-mode readiness, the
-> local model ladder, and the patch-scope gate are implemented and tested. The
-> queue, GitHub reconciliation, worktree lifecycle, and OpenCode command broker
-> are **not** implemented, so worker execution stays disabled on purpose.
+> local model ladder, the patch-scope gate, and the one-shot command approval
+> broker are implemented and tested. The queue, GitHub reconciliation, worktree
+> lifecycle, and OpenCode command mediation are **not** implemented, so worker
+> execution stays disabled on purpose.
 
 ## What works today
 
@@ -25,8 +26,10 @@ happens on the owner's Windows machine.
 | Host-mode readiness policy | Complete (`src/gitkeeper/host_mode/readiness.py`) — typed `ACCEPTED_HOST_MODE` gate, launch blocked |
 | Local model ladder and quota classification | Complete (`src/gitkeeper/policy/models.py`) |
 | Patch-scope publication rule | Complete (`src/gitkeeper/policy/patch_scope.py`) |
+| One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
+| Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | Queue, leases, GitHub label reconciliation, worktrees | Not implemented |
-| OpenCode command approval broker | Not implemented — the real launch gate |
+| OpenCode command mediation (real executor) | Not implemented — the real launch gate |
 
 ## Quick start
 
@@ -52,8 +55,8 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (220 tests) |
-| `py -m pytest tests/host_mode -q` | Typed host-mode readiness blockers |
+| `py -m pytest -q` | Full suite (318 tests) |
+| `py -m pytest tests/host_mode -q` | Typed host-mode readiness blockers and the command approval broker |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |
 
@@ -67,7 +70,10 @@ flowchart LR
     PR[Setu-mobile PR] -->|GitHub Actions labels| Q[Remote queue labels]
     Q -->|adaptive polling| C[GitKeeper companion]
     C -->|SQLite lease per repo/PR/head SHA| W[Local OpenCode worker]
-    W -->|patch-scope gate| G{Allowed?}
+    W -->|every shell request| A{Owner approves once?}
+    A -->|no answer, mismatch, or deny| X[Not run]
+    A -->|approved| K[One-shot command run]
+    K -->|patch-scope gate| G{Allowed?}
     G -->|yes| P[Commit + fast-forward push]
     G -->|no| B[Preserve worktree, block, ask owner]
     P --> PR
@@ -85,7 +91,7 @@ flowchart LR
   read-only on `pull_request`; only PRs authored by the owner are worker
   eligible. GitKeeper never accepts credentials from a repository config PR.
 
-### The three code-enforced gates
+### The four code-enforced gates
 
 `gitkeeper.host_mode.readiness` — the launch gate:
 
@@ -96,6 +102,23 @@ flowchart LR
   CLI version, and unproven command broker.
 - Readiness is computed from explicit GitHub and local facts; there is no
   boolean bypass, and historical isolation reports cannot authorize a launch.
+
+`gitkeeper.host_mode.command_broker` — the approval gate:
+
+- One immutable request: executable, argv **or** a complete shell script,
+  environment variable *names* only, absolute working directory, repository, PR,
+  starting SHA, and a single-line purpose. There is no field for a secret, so the
+  broker cannot leak or persist one.
+- The digest is a SHA-256 over the canonical JSON of that request; any change to
+  any field produces a different digest and voids the approval.
+- A decision is one-use, unforgeable, time-limited (300 s), and only `approve`
+  approves. A decision from another broker, a replay, a changed request, a moved
+  PR head, or a fork head all refuse to execute.
+- Remote facts are re-checked before presenting, after approval, and again at
+  execution, so the owner is never asked to bless stale state.
+- Execution itself is deliberately unimplemented: the only executor is
+  `execution_disabled`, which raises. An approval cannot become a process run
+  until OpenCode mediation is proven.
 
 `gitkeeper.policy.models` — the model ladder:
 
@@ -123,7 +146,7 @@ flowchart LR
 
 ```
 src/gitkeeper/
-  host_mode/   typed ACCEPTED_HOST_MODE readiness blockers
+  host_mode/   typed ACCEPTED_HOST_MODE readiness blockers + command approval broker
   isolation/   historical Windows-probe evidence, not a launch gate
   policy/      model ladder, quota classification, patch-scope rule
   ui/          view models, services, and QML (fox pet + handscroll panel)
@@ -141,6 +164,7 @@ Read, in order:
 2. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved contract.
 3. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
 
-The next slice is the OpenCode command approval broker: prove that CLI 1.19.6
-routes every shell request through a one-shot companion approval and cannot
-bypass it. Until that is proven, worker execution must remain disabled.
+The next slice is OpenCode command mediation: prove that CLI 1.19.6 routes every
+shell request through the one-shot companion approval that Task 2 now provides and
+cannot bypass it. Until that is proven, worker execution must remain disabled —
+`command_broker.execution_disabled` refuses every launch on purpose.

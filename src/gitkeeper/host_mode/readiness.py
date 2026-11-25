@@ -95,6 +95,11 @@ class Blocker(str, Enum):
     BROKER_UNVERIFIED = "broker-unverified"
 
 
+def is_repository_name(value: object) -> bool:
+    """True only for an exact `owner/repository` name."""
+    return isinstance(value, str) and _REPOSITORY_PATTERN.match(value) is not None
+
+
 def _require_bool(value: object, field: str) -> bool:
     if not isinstance(value, bool):
         raise HostModePolicyError(f"{field} must be a boolean, got {value!r}.")
@@ -102,7 +107,7 @@ def _require_bool(value: object, field: str) -> bool:
 
 
 def _require_repository(value: object, field: str) -> str:
-    if not isinstance(value, str) or not _REPOSITORY_PATTERN.match(value):
+    if not is_repository_name(value):
         raise HostModePolicyError(
             f"{field} must be an exact owner/repository value, got {value!r}."
         )

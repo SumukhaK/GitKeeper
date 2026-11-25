@@ -97,13 +97,15 @@
 - Consumes immutable worker command requests. Until Task 3 proves CLI mediation, production execution remains disabled.
 - Produces a pending-approval state, explicit approve/deny actions, and execution only after an exact matching one-use approval.
 
-- [ ] **Step 1: Write failing broker tests** for approve-once, deny, timeout, UI disconnect, partial request display, changed argv/cwd/repo/SHA/env, replay, and token expiry.
-- [ ] **Step 2: Run `py -m pytest tests/host_mode/test_command_broker.py -q`.** Expected: FAIL before the broker exists.
-- [ ] **Step 3: Implement canonical request digesting and a one-use approval record.** Never pass arbitrary shell text through string interpolation; show full script when a shell interpreter is requested.
-- [ ] **Step 4: Write UI tests** asserting request details are visible as plain text, approve/deny require explicit user input, no response denies, and status is accessible by keyboard/screen reader.
-- [ ] **Step 5: Implement the approval overlay and queue state.** Do not present an action as successful until the broker confirms execution outcome.
-- [ ] **Step 6: Run `py -m pytest tests/host_mode/test_command_broker.py tests/ui/test_command_approval.py tests/ui/test_qml_accessibility.py -q`.** Expected: PASS.
-- [ ] **Step 7: Verify reduced and disabled motion preserve the approval controls and command details.**
+**Outcome:** Steps 1-7 are done. `command_broker.py` carries 66 tests, `command_approval.py` 26, and `CommandApprovalDialog.qml` 6 QML tests; full suite is 318 passing. Deviation from the file list above: `viewmodels/queue.py` and `QueuePage.qml` needed no change, because a pending approval is presented in its own overlay and does not alter queue item state. Production execution stays disabled (`execution_disabled`); Task 3 must supply the mediated executor.
+
+- [x] **Step 1: Write failing broker tests** for approve-once, deny, timeout, UI disconnect, partial request display, changed argv/cwd/repo/SHA/env, replay, and token expiry.
+- [x] **Step 2: Run `py -m pytest tests/host_mode/test_command_broker.py -q`.** Expected: FAIL before the broker exists.
+- [x] **Step 3: Implement canonical request digesting and a one-use approval record.** Never pass arbitrary shell text through string interpolation; show full script when a shell interpreter is requested.
+- [x] **Step 4: Write UI tests** asserting request details are visible as plain text, approve/deny require explicit user input, no response denies, and status is accessible by keyboard/screen reader.
+- [x] **Step 5: Implement the approval overlay and queue state.** Do not present an action as successful until the broker confirms execution outcome.
+- [x] **Step 6: Run `py -m pytest tests/host_mode/test_command_broker.py tests/ui/test_command_approval.py tests/ui/test_qml_accessibility.py -q`.** Expected: PASS.
+- [x] **Step 7: Verify reduced and disabled motion preserve the approval controls and command details.**
 
 ### Task 3: Prove OpenCode 1.19.6 command interception feasibility
 

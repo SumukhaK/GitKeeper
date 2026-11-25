@@ -1,6 +1,7 @@
 # GitKeeper Setu-mobile Pilot — Handover Tracker
 
-**Last updated:** 2026-11-20  
+**Last updated:** 2026-11-25
+
 **Purpose:** Give a new engineer or AI agent enough durable context to continue the pilot without reconstructing decisions from chat history.
 
 ## Current state
@@ -11,18 +12,19 @@
 - The model-ladder and patch-scope policy slice plus `README.md` are merged: [GitKeeper #4](https://github.com/SumukhaK/GitKeeper/pull/4), merge commit `9b3213fdca9f618e018fa2dbc797be067d2dc47f`.
 - The repository housekeeping rule (README/About/tracker updates on every push) is merged: [GitKeeper #5](https://github.com/SumukhaK/GitKeeper/pull/5), merge commit `cab09d8918468bd4a18101fba94f9f626b5f4eae`.
 - Typed host-mode readiness is merged: [GitKeeper #6](https://github.com/SumukhaK/GitKeeper/pull/6), merge commit `ca34a45`, which adds `src/gitkeeper/host_mode/readiness.py` and `tests/host_mode/test_readiness.py` and retires the historical isolation report as an authorization input.
+- The one-shot command approval broker and its companion overlay are implemented on this branch: `src/gitkeeper/host_mode/command_broker.py`, `src/gitkeeper/ui/viewmodels/command_approval.py`, and `src/gitkeeper/ui/qml/CommandApprovalDialog.qml`, with the readiness plan's Task 2 Steps 1-7 ticked. Full suite: `py -m pytest -q` — 318 passed.
 - Setu-mobile Actions/config implementation is in [Setu-mobile #19](https://github.com/SumukhaK/Setu-mobile/pull/19), head `a153271a18241b3cf5b9d5ed7025916c6b11e9f8`. Its `Android CI` and `GitGuardian Security Checks` passed on that head; the PR is open and unmerged.
-- **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch.
+- **Worker execution is not ready and must remain disabled.** `ACCEPTED_HOST_MODE` records the owner's acceptance of host risk; it is not proof of isolation and does not by itself authorize a worker launch. The broker's default executor, `execution_disabled`, refuses every launch until Task 3 proves CLI mediation.
 
 ## Completion tracker
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
 | Pilot architecture and boundaries | Complete | The accepted spec defines GitHub Actions, local companion/worker responsibilities, trusted/untrusted boundaries, state transitions, telemetry, and pilot acceptance criteria. |
-| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, and focused tests. Current working-tree verification: `py -m pytest -q` — 220 passed. Real queue/worker and host-readiness wiring is still pending. |
+| Companion UI foundation | Complete, integration pending | The branch contains queue/status view models, fox/handscroll UI, settings/config-PR UI, manual feedback, telemetry view, the command approval overlay, and focused tests. Current working-tree verification: `py -m pytest -q` — 318 passed. Real queue/worker and host-readiness wiring is still pending. |
 | Setu-mobile Actions/config | Implemented; remote runtime partly verified | PR #19 contains strict config validation, secret-free PR CI, and a default-branch state classifier/label writer. Both current PR checks pass. The state workflow's label behavior and fork-PR runtime behavior still need live verification after the workflow is on the default branch. Do not merge this PR without the owner's review/authorization. |
-| Accepted Windows host mode | Decision accepted; typed readiness implemented | The owner accepted direct execution on their Windows 10 Home account and waived VM/WSL2/Sandbox and separate-user boundaries. `src/gitkeeper/host_mode/readiness.py` now computes readiness from typed facts and names every refusal: allowlist, privacy, fork head, exact author, open/non-draft, merged config, repair reason, stale check SHA, attempt budget, local model ladder, CLI 1.19.6, and proven command broker. Config publication still rejects `worker_enabled: true`, the historical isolation report is documented as evidence only, and `gitkeeper.isolation` cannot gate host mode. Still pending: wiring this status into the UI/queue, the broker, and the CLI capability probe. Never call this isolation or a sandbox. |
-| OpenCode command mediation | Not proven; blocking | The installed CLI is OpenCode `1.19.6`. `opencode run` is not an acceptable approval path: it rejects permission requests by default, while `--auto` auto-approves them. A companion-owned `opencode serve` permission-event/reply path is only a candidate until it is exercised through the UI and shown to fail closed. |
+| Accepted Windows host mode | Decision accepted; typed readiness implemented | The owner accepted direct execution on their Windows 10 Home account and waived VM/WSL2/Sandbox and separate-user boundaries. `src/gitkeeper/host_mode/readiness.py` now computes readiness from typed facts and names every refusal: allowlist, privacy, fork head, exact author, open/non-draft, merged config, repair reason, stale check SHA, attempt budget, local model ladder, CLI 1.19.6, and proven command broker. Config publication still rejects `worker_enabled: true`, the historical isolation report is documented as evidence only, and `gitkeeper.isolation` cannot gate host mode. Still pending: wiring this status into the UI/queue, the mediated executor behind the command broker, and the CLI capability probe. Never call this isolation or a sandbox. |
+| OpenCode command mediation | Approval half implemented; mediation not proven | `src/gitkeeper/host_mode/command_broker.py` now does everything except launch: canonical digest over executable/argv-or-script/env *names*/cwd/repo/PR/SHA/purpose, full script rendering when an interpreter is used, one-use approval keyed by an unforgeable `decision_id`, digest + request identity + replay + TTL + stale-fact re-checks in that order, and audit metadata with no argv, script, env name, or cwd. Facts must be a `PullRequestFacts` and the head repository must equal the request repository, so a fork head is never approvable. Execution is deliberately unimplemented: the default executor `execution_disabled` raises `ExecutionUnavailableError`. The installed CLI is OpenCode `1.19.6`; `opencode run` is not an acceptable approval path (it rejects permission requests by default, while `--auto` auto-approves them), and a companion-owned `opencode serve` permission-event/reply path is only a candidate until Task 3 exercises it through the UI and shows it fails closed. |
 | Local queue and worker | Not implemented | Build SQLite-backed leases/telemetry, GitHub reconciliation, label-state transitions, per-PR/SHA worktrees, cancellation, stale-head handling, and the three-invocation budget per open/reopen cycle. Keep stale worktrees for user recovery. |
 | Worker publication | Policy resolved; enforcement implemented | The owner delegated and approved a machine-checkable patch-scope rule, now recorded in the spec section "Patch scope rule for publication" and enforced by `src/gitkeeper/policy/patch_scope.py`. It fails closed with enumerated reason codes: worktree identity, 10 files / 400 total lines / 150 per-file limits, no deletions/renames/submodules/symlinks/binary/mode changes, allowlisted paths with a denylist that wins, a manifest capability rule, test-change and secret-scan intent checks, then a remote re-query before a fast-forward-only push. The thresholds are code constants so a config PR cannot widen them. Still missing: the git adapter that builds these decisions from a real worktree, and the control-plane commit/push step. |
 | Local OpenCode model policy | Policy resolved; persistence implemented | The owner supplied the ladder: default `opencode/deepseek-v4.1-flash-free`, then `opencode/glm-5.3`, `opencode/glm-5.3-flash`, `opencode/hy4-flash-free`, `opencode/deepseek-v4-pro`. `src/gitkeeper/policy/models.py` holds the ladder, validates every ID, persists it atomically to `%LOCALAPPDATA%\GitKeeper\models.json` (outside both repositories), and classifies quota/rate-limit output as `model-unavailable` without consuming the invocation budget. The settings panel exposes the ladder, the active ID, and the next-entry suggestion; switching is owner-confirmed only. Still missing: the launch path that reads this policy and the `models.json` bootstrap on a fresh host. |
@@ -90,6 +92,35 @@
   1.19.6 capability probe, and wiring `HostModeStatus` into `queue.py`/`settings.py`. Worker
   launch therefore stays disabled.
 
+## Command approval broker slice verification
+
+- Contract first: `tests/host_mode/test_command_broker.py` was written and observed failing
+  (`ModuleNotFoundError: No module named 'gitkeeper.host_mode.command_broker'`) before
+  `command_broker.py` existed. It now holds 66 tests covering approve-once, deny, timeout,
+  UI disconnect, partial or empty presentation, changed argv/script/cwd/repo/PR/SHA/env
+  names, a hand-built or foreign decision, replay, token `TTL`, stale remote facts before
+  presentation, after approval, and at execution, `ExecutionUnavailableError` from the
+  disabled default executor, and audit metadata that contains no argv, script, env name, or
+  cwd.
+- An implementation defect was found and closed while writing the UI tests: remote-state
+  matching did not compare `head_repository`, so a fork head with a matching SHA could have
+  been approved. Approval now requires `observed.repository == observed.head_repository ==
+  request.repository`, and `test_a_fork_head_is_never_approved_or_executed` pins it.
+- `tests/ui/test_command_approval.py` (26 tests) covers the `ApprovalPort` conformance,
+  every rendered line shown as plain text, header parsing from the rendered lines only,
+  explicit-action-only decisions, no-answer denial, never claiming execution, refusing to
+  overwrite a pending request, refusing an empty presentation, screen-reader text, motion
+  preferences, and two broker/view-model interlock tests.
+- Six QML tests were added to `tests/ui/test_qml_accessibility.py` and observed failing
+  against the previous `HandscrollPanel.qml`/`Main.qml` (5 failed, `commandApprovalDialog`
+  absent); after wiring the dialog and the `appCommandApprovalViewModel` context property,
+  `py -m pytest tests/ui/test_qml_accessibility.py -q` — 17 passed.
+- Full current suite: `py -m pytest -q` — 318 passed. `py -m ruff check` on the new and
+  changed files reports only the file's pre-existing findings (the repository still has no
+  ruff configuration, so these are not merge gates).
+- Deliberately not in this slice: any executor. `execution_disabled` is the only executor and
+  refuses every launch, so an approval can never be turned into a process run here.
+
 ## Approved decisions that must not be re-litigated
 
 1. GitKeeper application, companion, and worker code stay in private `SumukhaK/GitKeeper`. Setu-mobile receives only the Actions integration and its config.
@@ -110,8 +141,8 @@ repository front page accurate.
 1. Update the GitHub About section (`gh repo edit --description ... --add-topic ...`) when the
    project description or scope changed.
 2. Update `README.md` so its status table, commands, and layout still match the code. The
-   README must keep saying plainly that worker execution is disabled until the OpenCode
-   command broker is proven.
+   README must keep saying plainly that worker execution is disabled until OpenCode command
+   mediation is proven, even though the approval broker and its overlay now exist.
 3. Keep this tracker's "Current state" PR list current, so a new agent knows which slice
    `main` already contains.
 
@@ -120,7 +151,7 @@ repository front page accurate.
 Follow the detailed task lists in the linked plans, in this order:
 
 1. **Host readiness and local policy:** implement typed readiness that distinguishes accepted risk from readiness. Use the now-resolved model ladder (`gitkeeper.policy.models`) and the resolved patch-scope rule (`gitkeeper.policy.patch_scope`). Enforce the exact repository allowlist, ladder membership, same-repository head, exact author, open/non-draft state, merged config, current SHA, attempt budget, CLI version, and broker capability. **Done:** `src/gitkeeper/host_mode/readiness.py` plus `tests/host_mode/test_readiness.py`; wiring into the UI and queue is item 6.
-2. **Approval broker and UI:** add immutable request display and one-use approve/deny handling. Deny by default on timeout, disconnect, stale PR/SHA, request changes, replay, or incomplete rendering.
+2. **Approval broker and UI:** add immutable request display and one-use approve/deny handling. Deny by default on timeout, disconnect, stale PR/SHA, request changes, replay, or incomplete rendering. **Done:** `src/gitkeeper/host_mode/command_broker.py`, `src/gitkeeper/ui/viewmodels/command_approval.py`, `src/gitkeeper/ui/qml/CommandApprovalDialog.qml`, with 98 focused tests. Execution itself is still unimplemented on purpose.
 3. **OpenCode capability proof:** test the exact installed `1.19.6` path with the companion UI in a disposable non-repository directory. Verify approval, denial, request mutation, and bypass resistance. If any shell path can bypass approval, record `UNSUPPORTED`/NO-GO and keep worker launch disabled.
 4. **Queue/worker:** implement SQLite leases and recovery, GitHub polling/reconciliation, label states, per-PR/SHA worktrees, stale-head/close cancellation, bounded attempts, and explicit retry. Preserve worktrees on crash/rate-limit/escalation.
 5. **Publication policy:** the rule is defined and enforced by `PatchScopePolicy`. Build the git adapter that feeds it (staged raw/numstat diff, both blob revisions, unstaged/untracked detection), then the control-plane commit and fast-forward-only push to the existing PR branch. On any violation, preserve the worktree, block, and require explicit retry.
