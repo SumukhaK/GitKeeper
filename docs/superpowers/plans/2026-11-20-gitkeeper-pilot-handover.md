@@ -54,6 +54,9 @@
 - `tests/ui/test_settings_viewmodel.py` and `tests/ui/test_qml_accessibility.py` cover ladder
   exposure, owner-confirmed switching, rejection of off-ladder and other-provider IDs, the
   suggestion text, and that `can_enable_worker` stays `False`.
+- `README.md` documents the current state, commands, the two code-enforced policy gates, the
+  repository layout, and a reading order for the next contributor, so the repository is
+  self-explanatory without this tracker.
 - Full current suite: `py -m pytest -q` — 181 passed.
 - Still unproven: the git adapter that builds scope decisions from a real worktree, and the
   control-plane commit/push path. No worker may launch until OpenCode command mediation is
