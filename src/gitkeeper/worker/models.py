@@ -345,3 +345,29 @@ class WorkerResult:
             raise _invalid("execution_digest")
         if self.execution_digest is not None and self.execution is None:
             raise _invalid("execution_digest")
+
+
+class WorkerProcessFailure(RuntimeError):
+    """A consumed approval whose process did not complete successfully."""
+
+    completion: ProcessCompletion
+    process_started: bool
+    execution: ExecutionResult | None
+
+    def __init__(
+        self,
+        completion: ProcessCompletion,
+        *,
+        process_started: bool = False,
+        execution: ExecutionResult | None = None,
+    ) -> None:
+        if not isinstance(completion, ProcessCompletion):
+            raise TypeError("completion must be a ProcessCompletion.")
+        if type(process_started) is not bool:
+            raise TypeError("process_started must be a boolean.")
+        if execution is not None and not isinstance(execution, ExecutionResult):
+            raise TypeError("execution must be an ExecutionResult or None.")
+        self.completion = completion
+        self.process_started = process_started
+        self.execution = execution
+        super().__init__("Worker process did not complete successfully.")
