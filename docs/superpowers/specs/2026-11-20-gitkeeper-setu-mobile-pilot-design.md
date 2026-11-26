@@ -1,5 +1,11 @@
 # GitKeeper Setu-mobile Pilot Design
 
+> **Product scope superseded (2026-11-26).** GitKeeper's primary goal is now the review relay in
+> [`docs/PRD.md`](../../PRD.md). The trust, eligibility, command-approval and patch-scope rules
+> below stay in force until `docs/TECHNICAL.md` replaces them. Non-goals here that conflict with the
+> PRD (for example, transferring Claude feedback only by manual paste) are replaced by the PRD loop.
+
+
 **Status:** Design specification
 **Date:** 2026-11-20
 **Target repository:** `SumukhaK/Setu-mobile` (public Kotlin/Android repository)
