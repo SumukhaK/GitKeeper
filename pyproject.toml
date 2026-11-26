@@ -16,7 +16,8 @@ ui = ["PySide6", "pytest-qt"]
 [tool.ruff]
 line-length = 100
 include = [
-    "relay/**/*.py",
+    "src/gitkeeper/relay/**/*.py",
+    "tests/relay/**/*.py",
     "src/gitkeeper/ui/**/*.py",
     "tests/ui/**/*.py",
 ]
