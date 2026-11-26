@@ -294,3 +294,17 @@ def test_a_probe_record_cannot_claim_a_bypass_and_still_be_verified():
             probe_directory=r"C:\Users\sumuk\AppData\Local\Temp\gitkeeper-probe",
             verified=True,
         )
+
+
+def test_a_broken_plugin_link_is_refused(tmp_path):
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    try:
+        (worktree / ".opencode").symlink_to(
+            tmp_path / "missing", target_is_directory=True
+        )
+    except (OSError, NotImplementedError):
+        pytest.skip("Symbolic link creation is unavailable.")
+
+    with pytest.raises(ControlledConfigError):
+        require_inert_worktree(worktree)
