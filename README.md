@@ -84,7 +84,7 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (786 tests) |
+| `py -m pytest -q` | Full suite (796 tests as of merge commit `824925f`) |
 | `py -m pytest tests/test_queue_models.py tests/host_mode/test_readiness.py -q` | Queue domain contracts and readiness regressions (221 tests) |
 | `py -m pytest tests/test_queue_models.py tests/test_queue_store.py -q` | Queue domain and SQLite persistence contracts (264 tests) |
 | `py -m pytest tests/test_queue_telemetry.py -q` | Operational telemetry store (89 tests) |
