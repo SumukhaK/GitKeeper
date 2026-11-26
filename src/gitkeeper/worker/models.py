@@ -9,9 +9,30 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from gitkeeper.host_mode.readiness import is_repository_name
+from gitkeeper.host_mode.command_broker import ExecutionResult
+from gitkeeper.host_mode.readiness import (
+    PullRequestFacts,
+    WorkerConfiguration,
+    is_repository_name,
+)
+from gitkeeper.policy.models import is_opencode_model_id
+from gitkeeper.queue.models import (
+    AttemptOutcome,
+    CheckState,
+    ClaimResult,
+    OperationalError,
+    RepairReason,
+)
 
 _SHA_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+_TERMINAL_OUTCOMES = frozenset(
+    {
+        AttemptOutcome.completed,
+        AttemptOutcome.model_unavailable,
+        AttemptOutcome.failed,
+        AttemptOutcome.cancelled,
+    }
+)
 _MAX_FEEDBACK_CHARACTERS = 16_384
 
 
@@ -191,3 +212,128 @@ class GitWorktreePort(Protocol):
     def is_registered(self, path: Path) -> bool: ...
 
     def snapshot_active_checkouts(self) -> tuple[ActiveCheckoutSnapshot, ...]: ...
+
+
+@dataclass(frozen=True)
+class WorkerLaunchFacts:
+    pull_request: PullRequestFacts
+    configuration: WorkerConfiguration
+    checks: CheckState
+    repair_reason: RepairReason
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.pull_request, PullRequestFacts):
+            raise TypeError("pull_request must be PullRequestFacts.")
+        if not isinstance(self.configuration, WorkerConfiguration):
+            raise TypeError("configuration must be WorkerConfiguration.")
+        if not isinstance(self.checks, CheckState):
+            raise TypeError("checks must be CheckState.")
+        if not isinstance(self.repair_reason, RepairReason):
+            raise TypeError("repair_reason must be a queue RepairReason.")
+
+
+@dataclass(frozen=True)
+class WorkerJob:
+    claim: ClaimResult
+    worktree: WorktreeRecord
+    model_id: str
+    repair_reason: RepairReason
+    requires_test_change: bool
+    feedback: FeedbackRecord | None
+    checks: CheckState
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.claim, ClaimResult):
+            raise TypeError("claim must be a ClaimResult.")
+        if not isinstance(self.worktree, WorktreeRecord):
+            raise TypeError("worktree must be a WorktreeRecord.")
+        if not is_opencode_model_id(self.model_id):
+            raise _invalid("model_id")
+        if not isinstance(self.repair_reason, RepairReason):
+            raise TypeError("repair_reason must be a queue RepairReason.")
+        if type(self.requires_test_change) is not bool:
+            raise TypeError("requires_test_change must be a boolean.")
+        if not isinstance(self.checks, CheckState):
+            raise TypeError("checks must be CheckState.")
+
+        key = self.claim.lease.key
+        cycle_id = self.claim.attempt.cycle_id
+        identity = self.worktree.identity
+        if (
+            identity.repository != key.repository
+            or identity.pr_number != key.pr_number
+            or identity.head_sha != key.head_sha
+            or identity.cycle_id != cycle_id
+        ):
+            raise _invalid("worktree identity")
+        if self.checks.head_sha != key.head_sha:
+            raise _invalid("checks")
+        if self.requires_test_change and (
+            self.repair_reason is not RepairReason.deterministic_check_failure
+        ):
+            raise _invalid("requires_test_change")
+        if self.repair_reason is RepairReason.claude_feedback:
+            if self.feedback is None:
+                raise _invalid("feedback")
+        elif self.feedback is not None:
+            raise _invalid("feedback")
+        if self.feedback is not None:
+            if (
+                self.feedback.repository != key.repository
+                or self.feedback.pr_number != key.pr_number
+                or self.feedback.head_sha != key.head_sha
+                or self.feedback.cycle_id != cycle_id
+            ):
+                raise _invalid("feedback identity")
+
+
+@dataclass(frozen=True)
+class ProcessCompletion:
+    outcome: AttemptOutcome
+    exit_code: int | None
+    error: OperationalError | None
+
+    def __post_init__(self) -> None:
+        if self.outcome not in _TERMINAL_OUTCOMES:
+            raise _invalid("outcome")
+        if self.exit_code is not None and (
+            isinstance(self.exit_code, bool) or not isinstance(self.exit_code, int)
+        ):
+            raise _invalid("exit_code")
+        if self.error is not None and not isinstance(self.error, OperationalError):
+            raise TypeError("error must be an OperationalError or None.")
+
+
+@dataclass(frozen=True)
+class WorkerResult:
+    outcome: AttemptOutcome
+    model_id: str | None
+    error: OperationalError | None
+    process_started: bool = False
+    execution: ExecutionResult | None = None
+    execution_digest: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.outcome not in _TERMINAL_OUTCOMES:
+            raise _invalid("outcome")
+        if self.model_id is not None and not is_opencode_model_id(self.model_id):
+            raise _invalid("model_id")
+        if self.error is not None and not isinstance(self.error, OperationalError):
+            raise TypeError("error must be an OperationalError or None.")
+        if self.error is not None and self.outcome is not AttemptOutcome.cancelled:
+            raise _invalid("error")
+        if type(self.process_started) is not bool:
+            raise TypeError("process_started must be a boolean.")
+        if self.execution is not None and not isinstance(
+            self.execution, ExecutionResult
+        ):
+            raise TypeError("execution must be an ExecutionResult or None.")
+        if self.execution_digest is not None and (
+            not isinstance(self.execution_digest, str)
+            or not self.execution_digest.strip()
+        ):
+            raise _invalid("execution_digest")
+        if self.execution is not None and self.execution_digest is None:
+            raise _invalid("execution_digest")
+        if self.execution_digest is not None and self.execution is None:
+            raise _invalid("execution_digest")
