@@ -64,14 +64,14 @@ def test_truncates_diff_at_a_complete_line_with_character_counts() -> None:
 
     packet = build_review_packet(**kwargs)
 
-    assert (
-        "```diff\nfirst line\nsecond line\n[diff truncated: 22 of 45 characters shown"
-    ) in packet
+    assert "```diff\nfirst line\nsecond line\n```" in packet
+    assert "second line\n[diff truncated:" not in packet
     assert "third line" not in packet
-    assert (
+    notice = (
         "[diff truncated: 22 of 45 characters shown — review the rest on GitHub: "
-        "https://github.com/SumukhaK/GitKeeper/pull/58/files]\n```"
-    ) in packet
+        "https://github.com/SumukhaK/GitKeeper/pull/58/files]"
+    )
+    assert packet.endswith(notice)
 
 
 def test_does_not_truncate_diff_at_or_below_limit() -> None:
