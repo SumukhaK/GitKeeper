@@ -1,0 +1,31 @@
+{
+  "threshold": 3,
+  "minTokens": 60,
+  "reporters": ["console"],
+  "ignore": [
+    "**/.git/**",
+    "**/build/**",
+    "**/.gradle/**",
+    "**/node_modules/**",
+    "**/.venv/**",
+    "docs/**",
+    "**/*.md",
+    "**/*.lock",
+    "**/src/test/snapshots/**",
+    "**/src/gitkeeper/host_mode/**",
+    "**/src/gitkeeper/worker/**",
+    "**/src/gitkeeper/policy/**",
+    "**/src/gitkeeper/isolation/**",
+    "**/src/gitkeeper/queue/store.py",
+    "**/src/gitkeeper/queue/storage.py",
+    "**/src/gitkeeper/queue/telemetry.py",
+    "**/tests/host_mode/**",
+    "**/tests/unit/worker/**",
+    "**/tests/policy/**",
+    "**/tests/isolation/**",
+    "**/tests/integration/**",
+    "**/tests/test_queue_store.py",
+    "**/tests/test_queue_telemetry.py"
+  ],
+  "gitignore": true
+}
