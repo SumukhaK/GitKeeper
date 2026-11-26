@@ -1,8 +1,7 @@
 # GitKeeper — Product Requirements
 
-**Status:** Approved direction, 2026-11-26. This document replaces the product scope of
-[`superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md`](superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md).
-Technical decisions follow in `docs/TECHNICAL.md` (next PR).
+**Status:** Approved direction, 2026-11-26. It replaces the original pilot design spec (removed;
+see git history). Technical design: [`TECHNICAL.md`](TECHNICAL.md). Tasks: [`TRACKER.md`](TRACKER.md).
 
 ## Problem
 
