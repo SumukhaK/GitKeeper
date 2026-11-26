@@ -118,9 +118,7 @@ class SettingsViewModel(QObject):
 
     @Slot(str)
     def set_motion_preference(self, preference: str) -> None:
-        self._draft_settings = replace(
-            self._draft_settings, motion_preference=preference or None
-        )
+        self._draft_settings = replace(self._draft_settings, motion_preference=preference or None)
         self._clear_messages()
         self.changed.emit()
 
@@ -129,7 +127,8 @@ class SettingsViewModel(QObject):
         self._clear_messages()
         if self._draft_settings.worker_enabled:
             self._validation_message = (
-                "worker_enabled: Worker execution remains disabled until OpenCode command mediation is verified through the companion."
+                "worker_enabled: Worker execution remains disabled until "
+                "OpenCode command mediation is verified through the companion."
             )
             self.changed.emit()
             return False

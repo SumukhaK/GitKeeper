@@ -35,9 +35,7 @@ def main(
     QQuickStyle.setStyle("Basic")
     application = QGuiApplication(list(argv) if argv is not None else sys.argv)
     status_view_model, queue_view_model = create_viewmodels(queue_service)
-    settings_view_model = SettingsViewModel(
-        config_publisher, model_ladder=load_ladder()
-    )
+    settings_view_model = SettingsViewModel(config_publisher, model_ladder=load_ladder())
     telemetry_view_model = TelemetryViewModel(telemetry_service)
     if telemetry_service is not None:
         telemetry_view_model.refresh()

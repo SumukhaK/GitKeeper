@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from gitkeeper.ui.viewmodels.telemetry import TelemetryViewModel
 
-
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
 ALLOWED_FIELDS = {
     "timestamp",

@@ -1,0 +1,29 @@
+name: Python checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python checks
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test and UI dependencies
+        run: python -m pip install -e ".[test,ui]"
+      - name: Lint
+        run: ruff check .
+      - name: Check UI formatting
+        run: ruff format --check src/gitkeeper/ui tests/ui
+      - name: Test
+        run: pytest -q

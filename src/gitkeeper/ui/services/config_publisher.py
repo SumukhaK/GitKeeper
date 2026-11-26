@@ -7,9 +7,7 @@ from typing import Protocol
 @dataclass(frozen=True)
 class CompanionSettings:
     worker_enabled: bool = False
-    polling_preferences: Mapping[str, str] = field(
-        default_factory=lambda: {"mode": "adaptive"}
-    )
+    polling_preferences: Mapping[str, str] = field(default_factory=lambda: {"mode": "adaptive"})
     motion_preference: str | None = None
 
 
@@ -38,9 +36,7 @@ class ConfigPublicationError(RuntimeError):
 
 
 class ConfigPRClient(Protocol):
-    def get_default_branch_config(
-        self, repository: str, path: str
-    ) -> Mapping[str, object]: ...
+    def get_default_branch_config(self, repository: str, path: str) -> Mapping[str, object]: ...
 
     def create_or_update_config_pr(
         self,
@@ -79,11 +75,7 @@ def validate_settings(
     settings: CompanionSettings | Mapping[str, object],
 ) -> list[FieldError]:
     values = _settings_mapping(settings)
-    errors = [
-        FieldError(key, "Unknown setting.")
-        for key in values
-        if key not in _SETTING_FIELDS
-    ]
+    errors = [FieldError(key, "Unknown setting.") for key in values if key not in _SETTING_FIELDS]
     for key in _SETTING_FIELDS - values.keys():
         errors.append(FieldError(key, "This setting is required."))
 
@@ -101,8 +93,7 @@ def validate_settings(
 
     motion_preference = values.get("motion_preference")
     if motion_preference is not None and (
-        not isinstance(motion_preference, str)
-        or motion_preference not in _MOTION_PREFERENCES
+        not isinstance(motion_preference, str) or motion_preference not in _MOTION_PREFERENCES
     ):
         errors.append(
             FieldError(
@@ -130,18 +121,15 @@ class ConfigPublisher:
                 [
                     FieldError(
                         "worker_enabled",
-                        "Worker execution remains disabled until OpenCode command mediation is verified through the companion.",
+                        "Worker execution remains disabled until OpenCode command mediation "
+                        "is verified through the companion.",
                     )
                 ]
             )
 
-        default_config = self._client.get_default_branch_config(
-            _REPOSITORY, _CONFIG_PATH
-        )
+        default_config = self._client.get_default_branch_config(_REPOSITORY, _CONFIG_PATH)
         if not isinstance(default_config, Mapping):
-            raise ConfigPublicationError(
-                "The merged configuration could not be validated."
-            )
+            raise ConfigPublicationError("The merged configuration could not be validated.")
         default_config_errors = validate_settings(default_config)
         if default_config_errors:
             raise InvalidSettingsError(default_config_errors)
@@ -151,9 +139,7 @@ class ConfigPublisher:
         updated_config_errors = validate_settings(updated_config)
         if updated_config_errors:
             raise InvalidSettingsError(updated_config_errors)
-        config_contents = json.dumps(
-            updated_config, indent=2, sort_keys=True
-        ) + "\n"
+        config_contents = json.dumps(updated_config, indent=2, sort_keys=True) + "\n"
         return self._client.create_or_update_config_pr(
             _REPOSITORY,
             _CONFIG_BRANCH,

@@ -10,8 +10,30 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+test = ["pytest>=8.0", "ruff", "pytest-cov"]
 ui = ["PySide6", "pytest-qt"]
+
+[tool.ruff]
+line-length = 100
+include = [
+    "src/gitkeeper/relay/**/*.py",
+    "src/gitkeeper/ui/**/*.py",
+    "tests/ui/**/*.py",
+]
+extend-exclude = [
+    "src/gitkeeper/host_mode",
+    "src/gitkeeper/worker",
+    "src/gitkeeper/policy",
+    "src/gitkeeper/isolation",
+    "src/gitkeeper/queue",
+    "prototypes",
+]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C90", "ERA", "TID", "BLE"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"time.sleep".msg = "inject a clock or fix the cause"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -68,9 +68,7 @@ def test_request_details_are_shown_as_plain_text():
 
 def test_every_rendered_line_reaches_the_owner_verbatim():
     view_model = ready_view_model()
-    command = request(
-        script="gradlew.bat testDebugUnitTest\r\ndetekt\r\nlint", argv=()
-    )
+    command = request(script="gradlew.bat testDebugUnitTest\r\ndetekt\r\nlint", argv=())
 
     present(view_model, command)
 
@@ -108,9 +106,7 @@ def test_no_answer_denies_and_never_reports_success():
     assert answer is None
     assert view_model.pending is False
     assert view_model.status == "timed-out"
-    assert view_model.status_message == (
-        "No answer arrived, so the command was not run."
-    )
+    assert view_model.status_message == ("No answer arrived, so the command was not run.")
 
 
 def test_approve_queues_an_approval_without_claiming_the_command_ran():
@@ -192,9 +188,9 @@ def test_a_new_request_after_a_decision_starts_a_fresh_review():
 
     assert view_model.pending is True
     assert view_model.status == "pending"
-    assert view_model.shown_digest == request(
-        purpose="Re-run after the escalation was cleared"
-    ).digest
+    assert (
+        view_model.shown_digest == request(purpose="Re-run after the escalation was cleared").digest
+    )
 
 
 def test_status_is_described_for_screen_readers():
@@ -325,9 +321,7 @@ def test_the_companion_never_reports_an_unavailable_command_as_approved():
 
     assert view_model.approve() is False
     assert view_model.status == "unavailable"
-    assert view_model.status_message == (
-        "Command approval is unavailable; nothing was run."
-    )
+    assert view_model.status_message == ("Command approval is unavailable; nothing was run.")
     assert view_model.wait(0.01) is None
 
 
@@ -409,19 +403,9 @@ def test_execution_result_with_wrong_digest_cannot_complete_new_approval():
     present(view_model, second)
     view_model.approve()
 
-    assert (
-        view_model.record_execution(
-            ExecutionResult(0), request_digest=first.digest
-        )
-        is False
-    )
+    assert view_model.record_execution(ExecutionResult(0), request_digest=first.digest) is False
     assert view_model.status == "queued-for-execution"
-    assert (
-        view_model.record_execution(
-            ExecutionResult(0), request_digest=second.digest
-        )
-        is True
-    )
+    assert view_model.record_execution(ExecutionResult(0), request_digest=second.digest) is True
     assert view_model.status == "completed"
 
 
