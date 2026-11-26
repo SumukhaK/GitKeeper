@@ -92,6 +92,7 @@ def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 class _BridgeHandler(BaseHTTPRequestHandler):
     server: "_BridgeServer"
+    timeout = 10
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A003
         return
@@ -100,11 +101,15 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         body = json.dumps(
             payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True
         ).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError:
+            pass
 
     def _reject(self, status: int, reason: str) -> None:
         self._send(status, {"error": reason})
@@ -118,12 +123,32 @@ class _BridgeHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:  # noqa: N802
         self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
+
+    def do_TRACE(self) -> None:  # noqa: N802
+        self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
+
+    def do_CONNECT(self) -> None:  # noqa: N802
+        self._reject(HTTPStatus.METHOD_NOT_ALLOWED, "method")
+
     def do_POST(self) -> None:  # noqa: N802
         bridge = self.server.bridge
         if bridge.stopped:
             self._reject(HTTPStatus.SERVICE_UNAVAILABLE, "stopped")
             return
-        if urlsplit(self.path).path != _REQUEST_PATH:
+        try:
+            target = urlsplit(self.path)
+        except ValueError:
+            self._reject(HTTPStatus.BAD_REQUEST, "path")
+            return
+        if target.path != _REQUEST_PATH or target.query:
             self._reject(HTTPStatus.NOT_FOUND, "path")
             return
         content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0]
@@ -133,25 +158,30 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if self.headers.get("Transfer-Encoding"):
             self._reject(HTTPStatus.LENGTH_REQUIRED, "chunked")
             return
-        length_header = self.headers.get("Content-Length")
-        if length_header is None:
-            self._reject(HTTPStatus.LENGTH_REQUIRED, "length")
+        length_headers = self.headers.get_all("Content-Length") or []
+        if len(length_headers) != 1:
+            self._reject(HTTPStatus.BAD_REQUEST, "length")
             return
         try:
-            length = int(length_header)
+            length = int(length_headers[0])
         except (TypeError, ValueError):
             self._reject(HTTPStatus.BAD_REQUEST, "length")
             return
         if length <= 0 or length > _MAX_BODY_BYTES:
             self._reject(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "size")
             return
-        authorization = self.headers.get("Authorization") or ""
-        if not hmac.compare_digest(
-            authorization, f"Bearer {bridge.token}"
-        ):
+        expected = f"Bearer {bridge.token}".encode("ascii")
+        provided = (self.headers.get("Authorization") or "").encode(
+            "latin-1", "replace"
+        )
+        if not hmac.compare_digest(provided, expected):
             self._reject(HTTPStatus.UNAUTHORIZED, "authorization")
             return
         if not bridge.acquire_handler():
+            try:
+                self.rfile.read(length)
+            except OSError:
+                pass
             self._reject(HTTPStatus.SERVICE_UNAVAILABLE, "busy")
             return
         try:
@@ -307,6 +337,8 @@ class BrokerBridge:
     def start(self) -> BrokerEndpoint:
         if self._server is not None:
             raise BrokerBridgeError("The bridge is already started.")
+        if self._stop.is_set():
+            raise BrokerBridgeError("The bridge was stopped.")
         self._secure_token()
         try:
             server = _BridgeServer(self)

@@ -1,5 +1,6 @@
 import http.client
 import json
+import socket
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -95,6 +96,15 @@ def _connection(endpoint):
     return http.client.HTTPConnection(parts.hostname, parts.port, timeout=5)
 
 
+def _recv_all(connection) -> bytes:
+    data = b""
+    while True:
+        chunk = connection.recv(4096)
+        if not chunk:
+            return data
+        data += chunk
+
+
 def _post(
     endpoint,
     payload=None,
@@ -168,12 +178,93 @@ def test_rejects_wrong_path_and_method(tmp_path) -> None:
     bridge, endpoint, path = _bridge(tmp_path)
     try:
         wrong_path, _ = _post(endpoint, _payload(path), path="/other")
+        query_path, _ = _post(
+            endpoint, _payload(path), path="/command-request?x=1"
+        )
         wrong_method, _ = _post(endpoint, _payload(path), method="GET")
+        patch_method, _ = _post(endpoint, _payload(path), method="PATCH")
     finally:
         bridge.stop()
 
     assert wrong_path == 404
+    assert query_path == 404
     assert wrong_method == 405
+    assert patch_method == 405
+
+
+def test_rejects_non_ascii_authorization_with_a_fixed_response(tmp_path) -> None:
+    broker = FakeBroker()
+    bridge, endpoint, path = _bridge(tmp_path, broker)
+    body = json.dumps(_payload(path)).encode("utf-8")
+    try:
+        connection = _connection(endpoint)
+        connection.putrequest("POST", "/command-request")
+        connection.putheader("Authorization", "Bearer caf\u00e9")
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(len(body)))
+        connection.endheaders(body)
+        response = connection.getresponse()
+        data = response.read()
+        status = response.status
+        connection.close()
+    finally:
+        bridge.stop()
+
+    assert status == 401
+    assert json.loads(data) == {"error": "authorization"}
+    assert broker.requests == []
+
+
+def test_malformed_request_target_returns_fixed_json(tmp_path) -> None:
+    bridge, endpoint, _ = _bridge(tmp_path)
+    parts = urlsplit(endpoint.url)
+    try:
+        with socket.create_connection(
+            (parts.hostname, parts.port), timeout=5
+        ) as connection:
+            connection.sendall(
+                b"POST http://[::1/command-request HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Content-Length: 0\r\n"
+                b"\r\n"
+            )
+            data = _recv_all(connection)
+    finally:
+        bridge.stop()
+
+    assert b"400" in data
+    assert b'{"error":"path"}' in data
+
+
+def test_duplicate_content_length_is_rejected(tmp_path) -> None:
+    bridge, endpoint, path = _bridge(tmp_path)
+    parts = urlsplit(endpoint.url)
+    token = endpoint.token_file.read_text(encoding="utf-8").strip()
+    body = json.dumps(_payload(path)).encode("utf-8")
+    try:
+        with socket.create_connection(
+            (parts.hostname, parts.port), timeout=5
+        ) as connection:
+            connection.sendall(
+                b"POST /command-request HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\n"
+                b"Authorization: Bearer "
+                + token.encode("ascii")
+                + b"\r\n"
+                b"Content-Type: application/json\r\n"
+                b"Content-Length: "
+                + str(len(body)).encode("ascii")
+                + b"\r\nContent-Length: "
+                + str(len(body)).encode("ascii")
+                + b"\r\n\r\n"
+                + body
+            )
+            data = _recv_all(connection)
+    finally:
+        bridge.stop()
+
+    assert b"400" in data
+    assert b'{"error":"length"}' in data
 
 
 def test_rejects_unknown_duplicate_and_invalid_json(tmp_path) -> None:
@@ -264,6 +355,14 @@ def test_stop_removes_the_token_file(tmp_path) -> None:
     bridge.stop()
 
     assert not endpoint.token_file.exists()
+
+
+def test_start_after_stop_is_rejected(tmp_path) -> None:
+    bridge, _, _ = _bridge(tmp_path)
+    bridge.stop()
+
+    with pytest.raises(BrokerBridgeError):
+        bridge.start()
 
 
 def test_endpoint_is_loopback_with_an_ephemeral_port(tmp_path) -> None:
