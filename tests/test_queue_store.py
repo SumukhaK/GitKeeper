@@ -438,6 +438,42 @@ def test_changed_head_cancels_expired_lease_with_unassociated_intent_and_preserv
     assert reconciliation.uncertain_publication == association
 
 
+def test_close_recovers_expired_running_lease_without_intent(store):
+    cycle, _ = open_item(store)
+    claimed = claim(store, cycle)
+    running = start(store, claimed)
+    closed_at = LATER
+    closed = store.close_cycle(REPOSITORY, 42, closed_at)
+    assert closed.closed_at == closed_at
+    assert store.get_lease(claimed.lease.lease_id).cancelled_at == closed_at
+    recovered = store.get_attempt(claimed.attempt.attempt_id)
+    assert recovered.outcome is AttemptOutcome.recovered_unknown
+    assert recovered.started_at == running.started_at
+    assert recovered.model_id == MODEL
+    assert recovered.error is not None
+    assert recovered.error.category is ErrorCategory.worker_failed
+    assert store.automatic_invocation_count(REPOSITORY, 42, cycle.cycle_id) == 1
+    assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is None
+
+
+def test_changed_head_recovers_expired_running_lease_without_intent(store):
+    cycle, _ = open_item(store)
+    claimed = claim(store, cycle)
+    running = start(store, claimed)
+    changed_at = LATER
+    store.put_observation(snapshot(head_sha=NEXT_SHA, observed_at=changed_at))
+    assert store.get_lease(claimed.lease.lease_id).cancelled_at == changed_at
+    recovered = store.get_attempt(claimed.attempt.attempt_id)
+    assert recovered.outcome is AttemptOutcome.recovered_unknown
+    assert recovered.started_at == running.started_at
+    assert recovered.model_id == MODEL
+    assert recovered.error is not None
+    assert recovered.error.category is ErrorCategory.worker_failed
+    assert store.automatic_invocation_count(REPOSITORY, 42, cycle.cycle_id) == 1
+    assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is None
+    assert store.get_item(REPOSITORY, 42).current_head_sha == NEXT_SHA
+
+
 def test_changed_head_cancellation_does_not_replay_as_owner_cancellation(store):
     cycle, _ = open_item(store)
     claimed = claim(store, cycle)

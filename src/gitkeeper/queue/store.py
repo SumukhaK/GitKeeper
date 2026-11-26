@@ -362,11 +362,7 @@ class QueueStore:
             ).fetchone()
             if row is not None:
                 lease = _lease(row)
-                self._cancel_internal(
-                    db, lease, timestamp,
-                    require_manual_retry=False, category=ErrorCategory.worker_failed,
-                    reason="cycle_close", allow_expired=True,
-                )
+                self._terminate_mandatory_lease(db, lease, timestamp, "cycle_close")
             db.execute("UPDATE repair_cycles SET closed_at=? WHERE cycle_id=? AND closed_at IS NULL", (_text(timestamp), cycle.cycle_id))
             db.execute(
                 "UPDATE uncertain_publications SET resolved_at=?, resolution='superseded' "
@@ -742,6 +738,16 @@ class QueueStore:
         self._touch_item(db, cancelled.key.repository, cancelled.key.pr_number)
         return True
 
+    def _terminate_mandatory_lease(self, db, lease: Lease, now: datetime, reason: str) -> None:
+        if lease.expires_at <= now and not self._intent_for_attempt(db, lease.attempt_id, lease.cycle_id):
+            self._recover_internal(db, lease, now, latch=False)
+            return
+        self._cancel_internal(
+            db, lease, now,
+            require_manual_retry=False, category=ErrorCategory.worker_failed,
+            reason=reason, allow_expired=True,
+        )
+
     def _supersede_head(self, db, repository: str, pr_number: int, cycle_id: str, now: datetime) -> None:
         row = db.execute(
             "SELECT lease_id, generation, attempt_id, owner, repository, pr_number, head_sha, cycle_id, retry_authorization, claimed_at, expires_at, cancelled_at "
@@ -751,11 +757,7 @@ class QueueStore:
         if row is None:
             return
         lease = _lease(row)
-        self._cancel_internal(
-            db, lease, now,
-            require_manual_retry=False, category=ErrorCategory.worker_failed,
-            reason="changed_head", allow_expired=True,
-        )
+        self._terminate_mandatory_lease(db, lease, now, "changed_head")
 
     def claim(self, key: QueueKey, cycle_id: str, owner: str, now: datetime, lease_seconds: int, retry_authorization: str | None = None) -> ClaimResult | None:
         if not isinstance(key, QueueKey):
