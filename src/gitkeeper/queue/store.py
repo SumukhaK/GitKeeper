@@ -362,10 +362,11 @@ class QueueStore:
             ).fetchone()
             if row is not None:
                 lease = _lease(row)
-                if lease.expires_at <= timestamp:
-                    self._recover_internal(db, lease, timestamp, latch=False)
-                else:
-                    self._cancel_internal(db, lease, timestamp, require_manual_retry=False, category=ErrorCategory.worker_failed, reason="cycle_close")
+                self._cancel_internal(
+                    db, lease, timestamp,
+                    require_manual_retry=False, category=ErrorCategory.worker_failed,
+                    reason="cycle_close", allow_expired=True,
+                )
             db.execute("UPDATE repair_cycles SET closed_at=? WHERE cycle_id=? AND closed_at IS NULL", (_text(timestamp), cycle.cycle_id))
             db.execute(
                 "UPDATE uncertain_publications SET resolved_at=?, resolution='superseded' "
@@ -719,15 +720,17 @@ class QueueStore:
         self._touch_item(db, recovered.key.repository, recovered.key.pr_number)
         return recovered
 
-    def _cancel_internal(self, db, lease: Lease, now: datetime, *, require_manual_retry: bool, category: ErrorCategory, reason: str) -> bool:
+    def _cancel_internal(self, db, lease: Lease, now: datetime, *, require_manual_retry: bool, category: ErrorCategory, reason: str, allow_expired: bool = False) -> bool:
         identity = self._identity(db, lease)
         if identity is None:
             return False
         stored, attempt = identity
+        if require_manual_retry and attempt.kind is InvocationKind.reconcile_unknown:
+            return False
         if stored.cancelled_at is not None:
             stored_attempt = self._attempt_row(db, stored.attempt_id)
             return attempt.outcome is AttemptOutcome.cancelled and stored_attempt is not None and stored_attempt[14] == reason
-        if stored.expires_at <= now or not self._scope_current(db, stored):
+        if (not allow_expired and stored.expires_at <= now) or not self._scope_current(db, stored):
             return False
         if attempt.outcome not in (AttemptOutcome.reserved, AttemptOutcome.running):
             return False
@@ -735,8 +738,6 @@ class QueueStore:
         self._save_attempt(db, cancelled, reason)
         db.execute("UPDATE leases SET cancelled_at=? WHERE lease_id=?", (_text(now), stored.lease_id))
         if require_manual_retry:
-            if cancelled.kind is InvocationKind.reconcile_unknown:
-                return False
             self._set_latch(db, cancelled, category, now)
         self._touch_item(db, cancelled.key.repository, cancelled.key.pr_number)
         return True
@@ -750,10 +751,11 @@ class QueueStore:
         if row is None:
             return
         lease = _lease(row)
-        if lease.expires_at <= now:
-            self._recover_internal(db, lease, now, latch=False)
-        else:
-            self._cancel_internal(db, lease, now, require_manual_retry=False, category=ErrorCategory.worker_failed, reason="changed_head")
+        self._cancel_internal(
+            db, lease, now,
+            require_manual_retry=False, category=ErrorCategory.worker_failed,
+            reason="changed_head", allow_expired=True,
+        )
 
     def claim(self, key: QueueKey, cycle_id: str, owner: str, now: datetime, lease_seconds: int, retry_authorization: str | None = None) -> ClaimResult | None:
         if not isinstance(key, QueueKey):

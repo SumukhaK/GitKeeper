@@ -392,12 +392,50 @@ def test_close_cancels_active_lease_and_rejects_same_sha_stale_reopen(store):
     assert store.cancel(claimed.lease, closed_at + timedelta(seconds=1)) is False
 
 
+def test_close_cancels_expired_lease_with_unassociated_intent_and_allows_reopen(store):
+    cycle, _ = open_item(store)
+    claimed = claim(store, cycle)
+    recorded = intent(store, claimed)
+    closed_at = LATER
+    closed = store.close_cycle(REPOSITORY, 42, closed_at)
+    assert closed.closed_at == closed_at
+    assert store.get_lease(claimed.lease.lease_id).cancelled_at == closed_at
+    assert store.get_attempt(claimed.attempt.attempt_id).outcome is AttemptOutcome.cancelled
+    assert store.get_publication_intent(claimed.attempt.attempt_id) == recorded
+    assert store.list_unassociated_publication_intents(REPOSITORY) == ()
+    assert store.recover_attempt(claimed.lease, closed_at) is None
+    reopened_at = closed_at + timedelta(seconds=1)
+    reopened = store.open_cycle(REPOSITORY, 42, SHA, reopened_at)
+    store.put_item(item(reopened.cycle_id, observed_at=reopened_at, updated_at=reopened_at))
+    assert claim(store, reopened, now=reopened_at) is not None
+
+
 def test_changed_head_cancellation_does_not_create_a_new_latch(store):
     cycle, _ = open_item(store)
     claimed = claim(store, cycle)
     store.put_observation(snapshot(head_sha=NEXT_SHA, observed_at=NOW + timedelta(minutes=1)))
     assert store.get_attempt(claimed.attempt.attempt_id).outcome is AttemptOutcome.cancelled
     assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is None
+
+
+def test_changed_head_cancels_expired_lease_with_unassociated_intent_and_preserves_recovery(store):
+    cycle, _ = open_item(store)
+    claimed = claim(store, cycle)
+    recorded = intent(store, claimed)
+    changed_at = LATER
+    store.put_observation(snapshot(head_sha=NEXT_SHA, observed_at=changed_at))
+    assert store.get_lease(claimed.lease.lease_id).cancelled_at == changed_at
+    attempt = store.get_attempt(claimed.attempt.attempt_id)
+    assert attempt.outcome is AttemptOutcome.cancelled
+    assert attempt.error is None
+    assert store.get_publication_intent(claimed.attempt.attempt_id) == recorded
+    assert store.list_unassociated_publication_intents(REPOSITORY) == (recorded,)
+    assert store.has_unassociated_publication_intent(REPOSITORY, 42, cycle.cycle_id)
+    association = store.record_uncertain_publication(recorded.attempt_id, recorded.key, recorded.cycle_id, recorded.worktree_id, recorded.local_commit_sha, changed_at)
+    store.put_item(item(cycle.cycle_id, current_head_sha=NEXT_SHA, checks=checks(NEXT_SHA), observed_at=changed_at, updated_at=changed_at))
+    authorization = store.record_retry(key(head_sha=NEXT_SHA), cycle.cycle_id, OWNER_LOGIN, changed_at, changed_at + timedelta(minutes=5), RetryKind.reconcile_unknown)
+    reconciliation = store.claim(key(head_sha=NEXT_SHA), cycle.cycle_id, OWNER_LOGIN, changed_at, 300, authorization.authorization)
+    assert reconciliation.uncertain_publication == association
 
 
 def test_changed_head_cancellation_does_not_replay_as_owner_cancellation(store):
@@ -701,6 +739,27 @@ def test_blocked_reconciliation_exception_retains_latch_and_labels(store):
     assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is not None
     with pytest.raises(LocalLeaseConflict):
         start(store, claimed)
+
+
+def test_cancel_with_manual_retry_rejects_reconciliation_lease_without_mutation(store):
+    cycle, _ = open_item(store)
+    original = claim(store, cycle)
+    recorded = intent(store, original)
+    association = store.record_uncertain_publication(recorded.attempt_id, recorded.key, recorded.cycle_id, recorded.worktree_id, recorded.local_commit_sha, NOW)
+    store.cancel(original.lease, NOW)
+    reconciliation = reconcile(store, cycle, association)
+    assert reconciliation.attempt.kind is InvocationKind.reconcile_unknown
+    cancel_at = NOW + timedelta(seconds=1)
+    before_attempt = store.get_attempt(reconciliation.attempt.attempt_id)
+    before_lease = store.get_lease(reconciliation.lease.lease_id)
+    assert store.cancel(reconciliation.lease, cancel_at, require_manual_retry=True) is False
+    assert store.get_attempt(reconciliation.attempt.attempt_id) == before_attempt
+    assert store.get_lease(reconciliation.lease.lease_id) == before_lease
+    assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is None
+    assert store.cancel(reconciliation.lease, cancel_at, require_manual_retry=True) is False
+    assert store.get_attempt(reconciliation.attempt.attempt_id) == before_attempt
+    assert store.get_lease(reconciliation.lease.lease_id) == before_lease
+    assert store.get_manual_retry_latch(REPOSITORY, 42, cycle.cycle_id) is None
 
 
 def test_reconciliation_remote_equal_and_failure_resolutions(store):
