@@ -1,7 +1,19 @@
 # Worker and reviewer prompts
 
-Three prompts cover every task: start it, review it, send changes back. Paste them into OpenCode or Copilot, replacing the
-`<…>` parts. The issue itself holds the task details; these prompts set the ground rules.
+Three prompts cover every task: start it, review it, send changes back. Replace the `<…>`
+parts before pasting. The issue itself holds the task details; these prompts set the ground
+rules.
+
+## Current setup (temporary, GitKeeper only)
+
+| Step | Who | Prompt |
+| --- | --- | --- |
+| Build the task | **Copilot** | 1. Start a task |
+| Review the PR | **DeepSeek** (OpenCode) | 2. Review a PR |
+| Fix review findings | **Copilot** | 3. Send review changes back |
+| Decide and merge | **Owner** | the checklist at the end |
+
+The reviewer must always be a different model from the one that wrote the PR.
 
 ## 1. Start a task
 
@@ -41,13 +53,11 @@ Rules:
 
 ## 2. Review a PR
 
-Give this to the **reviewer**, not the worker that wrote the PR. Replace `<PR>`.
-Prefer a stronger or different model from the one that did the work: a model reviewing its
-own output shares its blind spots.
+Give this to **DeepSeek**. Replace `<PR>`.
 
 ```
 You are the REVIEWER for the GitKeeper repository (github.com/SumukhaK/GitKeeper).
-You review; you do not write or change code, and you do not merge.
+You review; you never write or change code, push, approve in the GitHub UI, or merge.
 
 Review pull request #<PR>.
 
@@ -55,19 +65,34 @@ Review pull request #<PR>.
    - gh pr view <PR> --comments          (title, body, Verification section)
    - the issue it closes: gh issue view <N>   (acceptance criteria, allowed files)
    - gh pr diff <PR>
-   - gh pr checks <PR>
+   - gh pr checks <PR>   (for anything red, find out why)
 2. Check out the PR branch and run: py -m pytest -q
-   Report the result. Do not commit anything.
-3. Review against prompts/review.md (on the PR branch or main), plus AGENTS.md,
-   docs/PRD.md and docs/TECHNICAL.md. In particular:
+   Report the result. Commit nothing.
+3. Review against AGENTS.md, docs/PRD.md and docs/TECHNICAL.md (the sections
+   the issue names):
    - every acceptance criterion met, nothing extra
    - only the files the issue allows were changed
-   - tests were written for the behaviour and would fail without the change
-   - the Verification section is real proof, not a claim
-   - no workarounds, duplicated logic, or comments justifying shortcuts
-4. Post your review as a PR comment: gh pr comment <PR> --body-file <file>
-   Be specific: file, line, problem, what to do instead.
-5. End the comment with exactly one block, and nothing after it:
+   - tests cover the behaviour and would fail without the change
+   - the Verification section is real proof for this commit, not a claim
+   - no workarounds, duplicated logic, dead code, or comments justifying shortcuts
+4. Sort every finding into exactly one place:
+   - WORKER FIXES: things the worker can fix on this branch.
+   - ISSUE DEFECTS: the issue itself is wrong or contradicts itself (e.g. it
+     asks for tests but allows no test files, or asks for a change to a file the
+     guardrails protect). The worker followed the issue, so don't blame the
+     worker. Give the exact corrected issue text.
+   - OWNER DECISIONS: a trade-off only the owner can make (an exemption from
+     a guardrail, a scope change). Give the options and recommend one.
+5. Post the review as a PR comment (gh pr comment <PR> --body-file <file>):
+
+   ## Review of #<PR>
+   <worker fixes: file, line, problem, what to do instead>
+
+   ## For the owner
+   <issue defects and owner decisions with your recommendation, or "Nothing.">
+
+   Then end with exactly one block, with nothing after it. Write it unindented,
+   with VERDICT: at the start of its own line:
 
    VERDICT: APPROVE
 
@@ -75,10 +100,12 @@ Review pull request #<PR>.
 
    VERDICT: CHANGES_REQUESTED
    WORKER PROMPT:
-   <numbered, self-contained instructions the worker can follow on the
-   same branch without seeing this review, including how to verify each>
+   <numbered, self-contained instructions for WORKER FIXES only, each with how
+   to verify it. If an owner decision blocks merging, add:
+   "Do not merge until the owner answers 'For the owner'.">
 
-6. STOP. Do not push, approve via the GitHub UI, or merge.
+   APPROVE only when no worker fixes are left.
+6. STOP.
 ```
 
 ## 3. Send review changes back
@@ -98,9 +125,22 @@ Update the PR's Verification section with fresh output, push to the
 same branch, reply on the PR point by point with what you changed, then STOP.
 ```
 
+## Owner checklist after each review
+
+Read only the review's **For the owner** section and its **VERDICT** line:
+
+1. **Owner decisions:** take the reviewer's recommendation unless you have a reason not
+   to. Reply on the PR with your choice so the record stays on GitHub.
+2. **Issue defects:** paste the reviewer's corrected text into the issue (edit the issue
+   body), then mention the change on the PR.
+3. **VERDICT: CHANGES_REQUESTED:** give Copilot prompt 3, including your decisions from
+   step 1 if they change what the worker must do. Then review again with prompt 2.
+4. **VERDICT: APPROVE:** merge. If a check is red only because of a decision you
+   approved in step 1 (e.g. a one-time exemption), merge anyway and say so on the PR.
+
 ## Assigning work
 
 - One worker per issue, never two on the same one.
 - Only give a worker an issue whose dependencies are closed. [`TRACKER.md`](TRACKER.md) has the order.
-- Once R1 (#54) merges, these prompts also live in `prompts/task.md` and `prompts/changes.md`.
-  GitKeeper will eventually fill them in for you.
+- R1 (#54) adds a `prompts/` folder from the template. While this setup is in use, **use the
+  prompts in this file**: they include the GitKeeper-specific rules and the owner lanes.
