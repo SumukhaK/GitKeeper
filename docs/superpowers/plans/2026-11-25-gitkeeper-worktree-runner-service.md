@@ -403,7 +403,7 @@ Status vocabulary for delivery evidence: `pending`, `in progress`, `review`, `bl
 
 | Slice | State | Depends on | Scope |
 | --- | --- | --- | --- |
-| 3A | pending | Slice 1 | worktree records + path tests |
+| 3A | merged | Slice 1 | worktree records, external registry, path-fenced manager, preservation + tests (registry/manager scope consolidated into 3A by its approved brief) — [PR #20](https://github.com/SumukhaK/GitKeeper/pull/20), merge `921089e0b6b5008b32c85c6419d9adf33dd74a54`, 15 focused + 644 full-suite tests pass |
 | 3B | pending | 3A | registry, worktree manager, preservation |
 | 3C | pending | 3B | Git worktree transport |
 | 3D | pending | 3C | DACL helper + feedback store |
