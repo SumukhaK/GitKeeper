@@ -45,6 +45,11 @@ _TERMINAL_OUTCOMES = (
     AttemptOutcome.recovered_unknown,
 )
 _TERMINAL_VALUES = tuple(outcome.value for outcome in _TERMINAL_OUTCOMES)
+_OUTCOME_CATEGORIES = {
+    AttemptOutcome.failed: ErrorCategory.worker_failed,
+    AttemptOutcome.recovered_unknown: ErrorCategory.worker_failed,
+    AttemptOutcome.model_unavailable: ErrorCategory.model_unavailable,
+}
 
 _EVENT_COLUMNS = (
     "event_id",
@@ -462,21 +467,36 @@ class TelemetryStore:
         error: OperationalError | None,
     ) -> dict[str, object]:
         category = None if error is None else error.category
-        if category is not None:
-            derived = (
-                AttemptOutcome.model_unavailable
-                if category is ErrorCategory.model_unavailable
-                else AttemptOutcome.failed
-            )
-            if outcome is not None and outcome is not derived:
+        if outcome is not None:
+            required_category = _OUTCOME_CATEGORIES.get(outcome)
+            if required_category is None:
+                if category is not None:
+                    raise _invalid("outcome")
+            elif category is None:
+                if outcome is AttemptOutcome.model_unavailable:
+                    category = required_category
+            elif category is not required_category:
                 raise _invalid("outcome")
+        elif category is ErrorCategory.model_unavailable:
+            outcome = AttemptOutcome.model_unavailable
+        elif category is ErrorCategory.worker_failed and event.attempt_id is not None:
+            # `failed` and `recovered_unknown` share the worker_failed category,
+            # so the terminal cannot be inferred from the category alone.
+            raise _invalid("outcome")
+        elif category is not None:
+            outcome = AttemptOutcome.failed
+
         if outcome is not None:
             outcome_value = outcome.value
-        elif category is ErrorCategory.model_unavailable:
-            outcome_value = AttemptOutcome.model_unavailable.value
-        elif category is not None:
-            outcome_value = AttemptOutcome.failed.value
         elif event.attempt_id is not None and invocation_count == 0:
+            outcome_value = AttemptOutcome.reserved.value
+        elif (
+            event.attempt_id is not None
+            and event.to_state is WorkerState.running
+            and invocation_count is None
+            and duration_ms is None
+            and model_id is None
+        ):
             outcome_value = AttemptOutcome.reserved.value
         elif event.attempt_id is not None and event.to_state is WorkerState.running:
             outcome_value = AttemptOutcome.running.value
@@ -568,7 +588,7 @@ class TelemetryStore:
                 required = 1 if started else 0
                 if count not in (None, required):
                     raise _invalid("invocation_count")
-                if outcome in _TERMINAL_VALUES:
+                if outcome in _TERMINAL_VALUES or outcome == _UNKNOWN_OUTCOME:
                     cls._reject_other_terminal(connection, attempt_id, outcome)
                 resolved = required
         facts["invocation_count"] = resolved
@@ -579,11 +599,18 @@ class TelemetryStore:
         connection: sqlite3.Connection, attempt_id: str, outcome: str
     ) -> None:
         placeholders = ", ".join("?" * len(_TERMINAL_VALUES))
-        row = connection.execute(
-            f"SELECT 1 FROM events WHERE attempt_id=? AND outcome IN ({placeholders}) "
-            "AND outcome<>? LIMIT 1",
-            (attempt_id, *_TERMINAL_VALUES, outcome),
-        ).fetchone()
+        if outcome == _UNKNOWN_OUTCOME:
+            row = connection.execute(
+                "SELECT 1 FROM events WHERE attempt_id=? AND "
+                f"(invocation_count>=1 OR outcome IN ({placeholders})) LIMIT 1",
+                (attempt_id, *_TERMINAL_VALUES),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"SELECT 1 FROM events WHERE attempt_id=? AND outcome IN ({placeholders}) "
+                "AND outcome<>? LIMIT 1",
+                (attempt_id, *_TERMINAL_VALUES, outcome),
+            ).fetchone()
         if row is not None:
             raise ValueError("Conflicting terminal outcome.")
 

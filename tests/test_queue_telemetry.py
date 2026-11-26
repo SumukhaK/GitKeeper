@@ -521,6 +521,72 @@ def test_model_unavailable_before_start_records_category_without_attempt_budget(
     assert views[1].error_category == "model_unavailable"
 
 
+def test_recovered_unknown_records_the_failed_family_terminal(store):
+    attempt, cycle = identifier(), identifier()
+    store.record(start(attempt, cycle=cycle), model_id=MODEL)
+    store.record(
+        terminal(attempt, cycle=cycle, error=operational_error(ErrorCategory.worker_failed)),
+        duration_ms=4200,
+        outcome=AttemptOutcome.recovered_unknown,
+    )
+    views = store.list_events()
+    assert [view.outcome for view in views] == ["running", "recovered_unknown"]
+    assert views[1].attempt_count == 1
+    assert views[1].duration_ms == 4200
+    assert views[1].error_category == "worker_failed"
+
+    with pytest.raises(ValueError):
+        store.record(
+            terminal(
+                attempt,
+                cycle=cycle,
+                occurred_at=LATER + timedelta(minutes=2),
+                error=operational_error(ErrorCategory.worker_failed),
+            ),
+            outcome=AttemptOutcome.failed,
+        )
+    assert len(store.list_events()) == 2
+
+
+def test_failed_family_terminal_without_an_explicit_outcome_is_rejected(store):
+    attempt, cycle = identifier(), identifier()
+    store.record(start(attempt, cycle=cycle), model_id=MODEL)
+    with pytest.raises(ValueError):
+        store.record(
+            terminal(
+                attempt,
+                cycle=cycle,
+                error=operational_error(ErrorCategory.worker_failed),
+            ),
+            duration_ms=1000,
+        )
+    assert [view.outcome for view in store.list_events()] == ["running"]
+
+
+def test_model_unavailable_outcome_derives_its_error_category(store):
+    attempt, cycle = identifier(), identifier()
+    event = terminal(attempt, cycle=cycle)
+    store.record(event, outcome=AttemptOutcome.model_unavailable)
+    [view] = store.list_events()
+    assert view.outcome == "model_unavailable"
+    assert view.error_category == "model_unavailable"
+    assert view.attempt_count == 0
+    store.record(replay(event), outcome=AttemptOutcome.model_unavailable)
+    assert len(store.list_events()) == 1
+
+
+def test_reservation_without_a_count_hint_records_no_invocation(store):
+    attempt, cycle = identifier(), identifier()
+    store.record(reservation(attempt, cycle=cycle))
+    [view] = store.list_events()
+    assert view.outcome == "reserved"
+    assert view.attempt_count == 0
+    store.record(start(attempt, cycle=cycle), duration_ms=900, model_id=MODEL)
+    views = store.list_events()
+    assert [view.outcome for view in views] == ["reserved", "running"]
+    assert views[1].attempt_count == 1
+
+
 def test_model_unavailable_after_start_records_the_started_attempt_only(store):
     attempt, cycle = identifier(), identifier()
     store.record(start(attempt, cycle=cycle), model_id=MODEL)
@@ -601,6 +667,21 @@ def test_replayed_lifecycle_events_after_a_crash_are_noops(store):
     store.record(replay(finished), outcome=AttemptOutcome.completed)
     assert len(store.list_events()) == 3
     assert [view.outcome for view in store.list_events()] == ["reserved", "running", "completed"]
+
+
+def test_replayed_terminal_without_an_outcome_adds_no_unknown_row(store):
+    attempt, cycle = identifier(), identifier()
+    store.record(reservation(attempt, cycle=cycle), outcome=AttemptOutcome.reserved)
+    store.record(start(attempt, cycle=cycle), duration_ms=1000, model_id=MODEL)
+    finished = terminal(attempt, cycle=cycle)
+    store.record(finished, duration_ms=1200, outcome=AttemptOutcome.completed)
+    with pytest.raises(ValueError):
+        store.record(replay(finished), duration_ms=1200)
+    assert [view.outcome for view in store.list_events()] == [
+        "reserved",
+        "running",
+        "completed",
+    ]
 
 
 def test_conflicting_facts_for_the_same_attempt_identity_are_rejected(store):
