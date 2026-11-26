@@ -43,6 +43,7 @@ Rules:
 6. If anything in the issue is ambiguous or seems wrong, say so in the PR
    description instead of guessing.
 7. Run the full suite: py -m pytest -q
+   Then refresh the code map and commit it: py tools/codemap.py
 8. Open ONE pull request:
    - body starts with "Closes #<ISSUE>"
    - "What changed": 2–3 sentences
@@ -120,7 +121,8 @@ PR #<PR> (branch <BRANCH>). Read AGENTS.md if it exists.
 
 Check out <BRANCH> and pull. Do not create a new branch or PR.
 For each change that alters behaviour, add or update a test first.
-Make only the requested changes. Run py -m pytest -q.
+Make only the requested changes. Run py -m pytest -q,
+then refresh the code map and commit it: py tools/codemap.py
 Update the PR's Verification section with fresh output, push to the
 same branch, reply on the PR point by point with what you changed, then STOP.
 ```

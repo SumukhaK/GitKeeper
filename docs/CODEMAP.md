@@ -21,6 +21,9 @@
 - `src/gitkeeper/queue/storage.py`: `class SQLiteStorage`
 - `src/gitkeeper/queue/store.py`: `class QueueStore`
 - `src/gitkeeper/queue/telemetry.py`: `class TelemetryStore`
+- `src/gitkeeper/relay/__init__.py`
+- `src/gitkeeper/relay/state.py`: `class Phase`, `class PrRecord`, `class PrFacts`, `def advance`, `def packet_copied`, `def verdict_recorded`, `def owner_reset`
+- `src/gitkeeper/relay/verdict.py`: `class Verdict`, `class VerdictError`, `def parse_verdict`
 - `src/gitkeeper/ui/__init__.py`
 - `src/gitkeeper/ui/app.py`: `def create_viewmodels`, `def main`
 - `src/gitkeeper/ui/errors.py`: `class QueueServiceError`, `class TelemetryServiceError`
