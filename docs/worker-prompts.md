@@ -91,7 +91,8 @@ Review pull request #<PR>.
    ## For the owner
    <issue defects and owner decisions with your recommendation, or "Nothing.">
 
-   Then end with exactly one block, with nothing after it:
+   Then end with exactly one block, with nothing after it. Write it unindented,
+   with VERDICT: at the start of its own line:
 
    VERDICT: APPROVE
 
