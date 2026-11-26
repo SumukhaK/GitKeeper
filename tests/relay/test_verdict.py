@@ -1,6 +1,7 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from gitkeeper.relay.verdict import Verdict, VerdictError, parse_verdict
 
 
@@ -151,7 +152,7 @@ def test_approval_uses_the_last_identical_verdict_line() -> None:
     [
         "VERDICT: private-review-value",
         "VERDICT: APPROVE\nprivate-review-text",
-        "VERDICT: CHANGES_REQUESTED\nWORKER PROMPT:\nprivate-review-prompt",
+        "VERDICT: CHANGES_REQUESTED\nWORKER PROMPT: private-review-prompt",
         "VERDICT: APPROVE\nVERDICT: private-review-value",
     ],
 )
