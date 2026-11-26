@@ -1,6 +1,7 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from gitkeeper.relay.state import (
     MAX_CI_ATTEMPTS,
     MAX_REVIEW_ROUNDS,
@@ -162,9 +163,7 @@ def test_third_changes_requested_blocks() -> None:
     ("checks", "expected"),
     [("pending", Phase.ci_pending), ("passed", Phase.review_needed), ("failed", Phase.ci_failed)],
 )
-def test_new_head_recomputes_active_phase(
-    phase: Phase, checks: str, expected: Phase
-) -> None:
+def test_new_head_recomputes_active_phase(phase: Phase, checks: str, expected: Phase) -> None:
     result = advance(
         record(phase, ci_attempts=1, reviewed_sha="old"), facts(checks, head_sha="new")
     )
