@@ -931,6 +931,58 @@ def test_invocation_attempt_valid_state_shapes():
     assert len(valid) == 10
 
 
+def test_reconciliation_attempt_allows_only_cancelled_or_failed_terminal_outcomes():
+    cancelled = attempt(
+        kind=InvocationKind.reconcile_unknown,
+        outcome=AttemptOutcome.cancelled,
+        finished_at=LATER,
+    )
+    failed = attempt(
+        kind=InvocationKind.reconcile_unknown,
+        outcome=AttemptOutcome.failed,
+        finished_at=LATER,
+        error=operational_error(),
+    )
+    assert cancelled.kind is InvocationKind.reconcile_unknown
+    assert cancelled.outcome is AttemptOutcome.cancelled
+    assert cancelled.started_at is None and cancelled.model_id is None and cancelled.error is None
+    assert failed.kind is InvocationKind.reconcile_unknown
+    assert failed.outcome is AttemptOutcome.failed
+    assert failed.started_at is None and failed.model_id is None
+    assert failed.error == operational_error()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"outcome": AttemptOutcome.running, "started_at": NOW, "model_id": MODEL_ID},
+        {"outcome": AttemptOutcome.completed, "started_at": NOW, "finished_at": LATER, "model_id": MODEL_ID},
+        {"outcome": AttemptOutcome.model_unavailable, "finished_at": LATER, "model_id": MODEL_ID, "error": operational_error(ErrorCategory.model_unavailable)},
+        {"outcome": AttemptOutcome.recovered_unknown, "started_at": NOW, "finished_at": LATER, "model_id": MODEL_ID, "error": operational_error()},
+        {"outcome": AttemptOutcome.cancelled, "finished_at": LATER, "error": operational_error()},
+        {"outcome": AttemptOutcome.failed, "finished_at": LATER},
+        {"outcome": AttemptOutcome.failed, "finished_at": LATER, "error": operational_error(ErrorCategory.worker_unavailable)},
+        {"outcome": AttemptOutcome.cancelled, "started_at": NOW, "finished_at": LATER, "model_id": MODEL_ID},
+        {"outcome": AttemptOutcome.failed, "finished_at": LATER, "model_id": MODEL_ID, "error": operational_error()},
+    ],
+)
+def test_reconciliation_attempt_rejects_launch_and_invalid_terminal_shapes(overrides):
+    with pytest.raises(ValueError):
+        attempt(kind=InvocationKind.reconcile_unknown, **overrides)
+
+
+def test_reconciliation_reserved_transition_never_acquires_running_launch_state():
+    reserved = attempt(kind=InvocationKind.reconcile_unknown)
+    cancelled = reserved.transition_to(AttemptOutcome.cancelled, finished_at=LATER)
+    failed = reserved.transition_to(AttemptOutcome.failed, finished_at=LATER, error=operational_error())
+    assert cancelled.outcome is AttemptOutcome.cancelled and cancelled.started_at is None
+    assert failed.outcome is AttemptOutcome.failed and failed.started_at is None
+    with pytest.raises(ValueError):
+        reserved.transition_to(AttemptOutcome.running, started_at=NOW, model_id=MODEL_ID)
+    with pytest.raises(ValueError):
+        reserved.transition_to(AttemptOutcome.model_unavailable, finished_at=LATER, model_id=MODEL_ID, error=operational_error(ErrorCategory.model_unavailable))
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

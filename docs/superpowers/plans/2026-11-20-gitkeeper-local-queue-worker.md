@@ -12,11 +12,11 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0`. Slice 1's queue domain contracts are independently approved in [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15); slices 2–7 remain pending and worker execution stays disabled.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0`. Slice 1's queue domain contracts are merged from [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15) at `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 persistence is implemented at `091507a` with 259 focused and 624 full-suite tests passing and awaits independent review; slices 3–7 remain pending, and worker execution stays disabled.
 
 | Original task | Detailed plan / slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
-| Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | slice 1 independently approved; slices 2–3 pending | [#15](https://github.com/SumukhaK/GitKeeper/pull/15) | see PR |
+| Task 1 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 1–3 | slice 1 merged; slice 2 implemented, review pending; slice 3 pending | [#15](https://github.com/SumukhaK/GitKeeper/pull/15) | `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47` |
 | Task 2 | [Queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md), slices 4–7 | pending | — | — |
 | Task 3 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |
 | Task 4 | [Worktree, runner, and service plan](2026-11-25-gitkeeper-worktree-runner-service.md) | planned; fresh approval required in PR #14 | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | — |

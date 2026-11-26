@@ -695,8 +695,15 @@ class InvocationAttempt:
         model_id = None if self.model_id is None else _model_id(self.model_id)
         if self.error is not None and not isinstance(self.error, OperationalError):
             raise _invalid("error")
-        if kind is InvocationKind.reconcile_unknown and outcome is not AttemptOutcome.reserved:
-            raise _invalid("reconciliation outcome")
+        if kind is InvocationKind.reconcile_unknown:
+            if outcome not in (
+                AttemptOutcome.reserved,
+                AttemptOutcome.cancelled,
+                AttemptOutcome.failed,
+            ):
+                raise _invalid("reconciliation outcome")
+            if started_at is not None or model_id is not None:
+                raise _invalid("reconciliation launch state")
         if started_at is not None and started_at < reserved_at:
             raise _invalid("started_at")
         if started_at is not None and model_id is None:
