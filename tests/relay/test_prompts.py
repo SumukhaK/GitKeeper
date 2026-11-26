@@ -13,7 +13,14 @@ PROMPTS = Path(__file__).parents[2] / "prompts"
 
 
 def test_changes_prompt_fills_real_template_and_preserves_unknown_placeholders() -> None:
-    template = (PROMPTS / "changes.md").read_text(encoding="utf-8")
+    template = (
+        (PROMPTS / "changes.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "PR #<PR_NUMBER> (branch `<BRANCH>`)",
+            "PR #<PR_NUMBER> on branch `<BRANCH>` <UNCHANGED>",
+        )
+    )
     worker_prompt = "1. Fix the parser.\n2. Run the tests."
 
     result = changes_prompt(
@@ -23,13 +30,13 @@ def test_changes_prompt_fills_real_template_and_preserves_unknown_placeholders()
         worker_prompt=worker_prompt,
     )
 
-    assert "PR #79 (branch `feature/r5-review-packet-builder`)" in result
-    assert f"1. Check out `feature/r5-review-packet-builder`" in result
+    assert "PR #79 on branch `feature/r5-review-packet-builder` <UNCHANGED>" in result
+    assert "1. Check out `feature/r5-review-packet-builder`" in result
     assert f"\n\n{worker_prompt}\n\nDo this:" in result
     assert "<PR_NUMBER>" not in result
     assert "<BRANCH>" not in result
     assert "<WORKER PROMPT from the reviewer's verdict block>" not in result
-    assert "<feature|bugfix|upkeep>" in result
+    assert "<UNCHANGED>" in result
 
 
 @pytest.mark.parametrize(
@@ -66,11 +73,7 @@ def test_changes_prompt_leaves_worker_line_untouched_when_template_omits_it() ->
 
 
 def test_task_prompt_fills_real_template_and_preserves_unknown_placeholders() -> None:
-    template = (
-        (PROMPTS / "task.md")
-        .read_text(encoding="utf-8")
-        .replace("<feature|bugfix|upkeep>/<short-title>", "<UNCHANGED>")
-    )
+    template = (PROMPTS / "task.md").read_text(encoding="utf-8")
     issue_body = "Build the prompts.\n\n- Preserve ordering."
 
     result = task_prompt(
@@ -81,12 +84,32 @@ def test_task_prompt_fills_real_template_and_preserves_unknown_placeholders() ->
     )
 
     assert "issue #59: R6: Worker prompt builders" in result
-    assert f"<UNCHANGED>\n\n{issue_body}\n\nDo this, in order:" in result
-    assert "<UNCHANGED>" in result
-    assert "<feature|bugfix|upkeep>/<short-title>" in result
+    assert f"{issue_body}\n\nDo this, in order:" in result
+    assert "<feature|bugfix|upkeep>" in result
     assert "Closes #59" in result
     assert "<ISSUE_NUMBER>" not in result
     assert "<ISSUE_TITLE>" not in result
+    assert (
+        "<ISSUE_BODY — goal, acceptance criteria, files likely to change, expected proof>"
+        not in result
+    )
+
+
+def test_task_prompt_preserves_similarly_prefixed_unknown_placeholder() -> None:
+    template = (
+        "#<ISSUE_NUMBER>: <ISSUE_TITLE>\n"
+        "<ISSUE_BODY — goal, acceptance criteria, files likely to change, expected proof>\n"
+        "<ISSUE_BODY — unexpected>"
+    )
+
+    result = task_prompt(
+        template,
+        issue_number=59,
+        issue_title="R6",
+        issue_body="Build the prompts.",
+    )
+
+    assert "<ISSUE_BODY — unexpected>" in result
     assert (
         "<ISSUE_BODY — goal, acceptance criteria, files likely to change, expected proof>"
         not in result
