@@ -398,3 +398,37 @@ def test_a_broker_run_through_the_view_model_exposes_the_approval_metrics():
     assert decision.outcome is ApprovalOutcome.APPROVED
     assert decision.audit_metadata()["pr_number"] == 19
     assert view_model.status == "queued-for-execution"
+
+
+def test_execution_result_with_wrong_digest_cannot_complete_new_approval():
+    view_model = ready_view_model()
+    first = request(purpose="First command")
+    present(view_model, first)
+    view_model.approve()
+    second = request(purpose="Second command")
+    present(view_model, second)
+    view_model.approve()
+
+    assert (
+        view_model.record_execution(
+            ExecutionResult(0), request_digest=first.digest
+        )
+        is False
+    )
+    assert view_model.status == "queued-for-execution"
+    assert (
+        view_model.record_execution(
+            ExecutionResult(0), request_digest=second.digest
+        )
+        is True
+    )
+    assert view_model.status == "completed"
+
+
+def test_legacy_one_argument_execution_reporting_still_works():
+    view_model = ready_view_model()
+    present(view_model)
+    view_model.approve()
+
+    assert view_model.record_execution(ExecutionResult(0)) is True
+    assert view_model.status == "completed"

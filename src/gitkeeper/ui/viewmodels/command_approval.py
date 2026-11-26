@@ -220,12 +220,25 @@ class CommandApprovalViewModel(QObject):
         self._motion_preference = value
         self.changed.emit()
 
-    def record_execution(self, result: ExecutionResult) -> bool:
+    def record_execution(
+        self,
+        result: ExecutionResult,
+        request_digest: str | None = None,
+    ) -> bool:
         """Report what the worker confirmed, never what we hoped would happen."""
         if not isinstance(result, ExecutionResult):
             raise TypeError("result must be an ExecutionResult.")
+        if request_digest is not None and (
+            not isinstance(request_digest, str) or not request_digest
+        ):
+            raise ValueError("request_digest must be a non-empty string or None.")
         with self._lock:
             if self._status != QUEUED_FOR_EXECUTION:
+                return False
+            if (
+                request_digest is not None
+                and request_digest != self._request_digest
+            ):
                 return False
             self._status = COMPLETED if result.exit_code == 0 else FAILED
             verb = "Finished" if result.exit_code == 0 else "Failed"

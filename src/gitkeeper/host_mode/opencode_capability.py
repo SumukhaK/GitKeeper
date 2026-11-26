@@ -401,10 +401,12 @@ def require_inert_worktree(worktree: str | Path) -> Path:
             f"The worktree to launch in does not exist: {candidate}"
         )
     for name in PROJECT_PLUGIN_DIRECTORY_NAMES:
-        if (candidate / name).exists():
+        entry = candidate / name
+        if entry.exists() or entry.is_symlink() or os.path.lexists(entry):
             raise ControlledConfigError(
                 f"The worktree contains {name}, which the CLI loads outside the "
-                "project-config guard; remove it before launching a worker."
+                "project-config guard; launch is refused and the content must be "
+                "preserved, never removed automatically."
             )
     return candidate.resolve()
 
