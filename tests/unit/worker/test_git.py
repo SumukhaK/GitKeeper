@@ -40,6 +40,9 @@ def _remote(tmp_path: Path) -> tuple[Path, Path, str]:
     _git("config", "user.email", "test@example.com", cwd=work)
     _git("config", "user.name", "Test", cwd=work)
     (work / "file.txt").write_bytes(b"hello\n")
+    (work / "space name.txt").write_bytes(b"space\n")
+    (work / "caf\u00e9.txt").write_bytes(b"unicode\n")
+    (work / "plus.txt").write_bytes(b"base\n")
     _git("add", ".", cwd=work)
     _git("commit", "-m", "initial", cwd=work)
     sha = _git("rev-parse", "HEAD", cwd=work)
@@ -382,3 +385,111 @@ def test_remote_head_missing_branch_and_other_repository(tmp_path) -> None:
         transport.remote_head(_REPOSITORY, "repair/missing")
     with pytest.raises(ValueError):
         transport.remote_head("Other/Repo", "repair/test")
+
+def test_inspect_changes_reports_content_and_added_text(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"hello\nchanged\n")
+    (worktree / "new.txt").write_bytes(b"brand new\n")
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert [change.path for change in changes] == ["file.txt", "new.txt"]
+    modified, added = changes
+    assert modified.status == "modified"
+    assert modified.added_lines == 1
+    assert modified.deleted_lines == 0
+    assert modified.old_content == b"hello\n"
+    assert modified.new_content == b"hello\nchanged\n"
+    assert "changed" in modified.added_text
+    assert added.status == "added"
+    assert added.old_content is None
+    assert added.new_content == b"brand new\n"
+    assert unstaged is True
+
+
+def test_inspect_changes_marks_deleted_files(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").unlink()
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert len(changes) == 1
+    assert changes[0].status == "deleted"
+    assert changes[0].old_content == b"hello\n"
+    assert changes[0].new_content is None
+    assert unstaged is True
+
+
+def test_inspect_committed_changes_excludes_uncommitted(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"hello\nchanged\n")
+    (worktree / "untracked.txt").write_bytes(b"ignore me\n")
+    transport.stage(worktree, ("file.txt",))
+    transport.commit(worktree, "Commit the change")
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=False
+    )
+
+    assert [change.path for change in changes] == ["file.txt"]
+    assert changes[0].status == "modified"
+    assert changes[0].new_content == b"hello\nchanged\n"
+    assert unstaged is False
+
+
+def test_inspect_changes_with_no_changes(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert changes == ()
+    assert unstaged is False
+
+def test_inspect_changes_handles_spaces_unicode_and_plus_lines(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "space name.txt").write_bytes(b"space\nbad secret\n")
+    (worktree / "caf\u00e9.txt").write_bytes(b"unicode\nchanged\n")
+    (worktree / "plus.txt").write_bytes(
+        b"base\n"
+        b"+++ added header-like line\n"
+        b"++ increment line\n"
+        b"secret-after-increment\n"
+        b"++ /dev/null\n"
+    )
+    (worktree / "new caf\u00e9.txt").write_bytes(b"new file\n")
+
+    changes, _ = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+    by_path = {change.path: change for change in changes}
+
+    assert by_path["space name.txt"].added_text == "bad secret\n"
+    assert by_path["caf\u00e9.txt"].added_text == "changed\n"
+    assert by_path["plus.txt"].added_text == (
+        "+++ added header-like line\n"
+        "++ increment line\n"
+        "secret-after-increment\n"
+        "++ /dev/null\n"
+    )
+    assert by_path["new caf\u00e9.txt"].added_text == "new file\n"

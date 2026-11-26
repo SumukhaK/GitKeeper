@@ -10,6 +10,7 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from gitkeeper.host_mode.command_broker import ExecutionResult
+from gitkeeper.policy.patch_scope import RemotePrState
 from gitkeeper.host_mode.readiness import (
     PullRequestFacts,
     WorkerConfiguration,
@@ -371,3 +372,77 @@ class WorkerProcessFailure(RuntimeError):
         self.process_started = process_started
         self.execution = execution
         super().__init__("Worker process did not complete successfully.")
+
+
+def _branch(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise _invalid("branch")
+    if value in {"HEAD", "@", "main", "master"} or value.startswith("refs/"):
+        raise _invalid("branch")
+    if value.startswith(("-", "/", ".")) or value.endswith(("/", ".lock", ".")):
+        raise _invalid("branch")
+    if (
+        ".." in value
+        or "//" in value
+        or any(character in value for character in "~^:?*[\\")
+        or any(ord(character) < 32 or character.isspace() for character in value)
+    ):
+        raise _invalid("branch")
+    return value
+
+
+@dataclass(frozen=True)
+class PublishTarget:
+    repository: str
+    pr_number: int
+    branch: str
+    head_repository: str
+    is_default_branch: bool
+    remote: RemotePrState
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "repository", _repository(self.repository))
+        object.__setattr__(self, "pr_number", _integer(self.pr_number, "pr_number"))
+        object.__setattr__(self, "branch", _branch(self.branch))
+        object.__setattr__(
+            self, "head_repository", _repository(self.head_repository)
+        )
+        if (
+            self.head_repository.casefold() != self.repository.casefold()
+        ):
+            raise _invalid("head_repository")
+        if type(self.is_default_branch) is not bool:
+            raise TypeError("is_default_branch must be a boolean.")
+        if not isinstance(self.remote, RemotePrState):
+            raise TypeError("remote must be a RemotePrState.")
+        if (
+            self.remote.head_repository is None
+            or self.remote.head_repository.casefold()
+            != self.head_repository.casefold()
+        ):
+            raise _invalid("remote.head_repository")
+
+
+@dataclass(frozen=True)
+class PublishResult:
+    status: str
+    commit_sha: str | None
+    reason_codes: tuple[str, ...]
+    error: OperationalError | None
+
+    def __post_init__(self) -> None:
+        if self.status not in {"published", "blocked", "unknown"}:
+            raise _invalid("status")
+        if self.commit_sha is not None and (
+            not isinstance(self.commit_sha, str)
+            or _SHA_PATTERN.fullmatch(self.commit_sha) is None
+        ):
+            raise _invalid("commit_sha")
+        if not isinstance(self.reason_codes, tuple) or any(
+            not isinstance(code, str) or not code for code in self.reason_codes
+        ):
+            raise _invalid("reason_codes")
+        if self.error is not None and not isinstance(self.error, OperationalError):
+            raise TypeError("error must be an OperationalError or None.")
+        if self.status == "published" and self.commit_sha is None:
+            raise _invalid("commit_sha")
