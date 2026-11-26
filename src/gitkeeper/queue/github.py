@@ -1,9 +1,10 @@
-"""Read-only GitHub control-plane REST adapter.
+"""GitHub control-plane REST adapter.
 
-Every public operation issues exactly one HTTP request per intended endpoint
-read and raises only the fixed queue error categories. Backoff belongs to the
+Every public operation issues the minimum HTTP requests the endpoint requires
+and raises only the fixed queue error categories. Backoff belongs to the
 poller, so nothing is retried or logged here, and no response detail, URL, or
-credential ever reaches an error message.
+credential ever reaches an error message. Worker-label writes converge to a
+desired state instead of blindly mutating.
 """
 
 from __future__ import annotations
@@ -49,13 +50,14 @@ _CONCLUSIONS = {
     "timed_out": CheckConclusion.timed_out,
     "action_required": CheckConclusion.action_required,
 }
+_WORKER_LABEL_NAMES = frozenset(label.value for label in WorkerLabel)
 
 
 class GitHubControlPlane(Protocol):
     """GitHub surface consumed by the queue poller.
 
-    The concrete client implements the read/config half in this slice; the
-    worker-label half is supplied by the label slice.
+    The concrete client implements both the read/config half and worker-label
+    desired-state convergence.
     """
 
     async def list_open_pull_requests(
@@ -95,7 +97,7 @@ class _CheckRun:
 
 
 class GitHubRestClient:
-    """Single-request-at-a-time GitHub REST reads for the queue poller."""
+    """GitHub REST reads plus worker-label writes for the queue poller."""
 
     def __init__(
         self,
@@ -227,19 +229,108 @@ class GitHubRestClient:
         except (TypeError, ValueError):
             raise GitHubResponseError() from None
 
+    async def get_worker_labels(
+        self, repository: str, pr_number: int
+    ) -> tuple[WorkerLabel, ...]:
+        return self._worker_label_entries(repository, pr_number)
+
+    async def set_worker_label(
+        self, repository: str, pr_number: int, label: WorkerLabel | None
+    ) -> None:
+        if label is not None and not isinstance(label, WorkerLabel):
+            raise GitHubResponseError()
+        current = self._worker_label_entries(repository, pr_number)
+        desired: tuple[WorkerLabel, ...] = () if label is None else (label,)
+        if current == desired:
+            return
+        # More than one GitKeeper label has no defined convergence target.
+        if len(current) > 1:
+            raise GitHubResponseError()
+        owner, name = _repository_parts(repository)
+        number = _pr_number(pr_number)
+        labels_url = (
+            f"{self._api_url}/repos/{owner}/{name}/issues/{number}/labels"
+        )
+        for conflicting in current:
+            # Labels are per-PR queue projections, so delete the assignment on
+            # this issue rather than the repository-wide label definition URL.
+            self._write(
+                f"{labels_url}/{quote(conflicting.value, safe='')}",
+                method="DELETE",
+            )
+        if label is not None:
+            self._write(
+                labels_url,
+                method="POST",
+                payload={"labels": [label.value]},
+            )
+        final = self._worker_label_entries(repository, pr_number)
+        if final != desired:
+            raise GitHubResponseError()
+
+    def _worker_label_entries(
+        self, repository: object, pr_number: object
+    ) -> tuple[WorkerLabel, ...]:
+        owner, name = _repository_parts(repository)
+        number = _pr_number(pr_number)
+        url: str | None = (
+            f"{self._api_url}/repos/{owner}/{name}/issues/{number}"
+            "/labels?per_page=100"
+        )
+        visited: set[str] = set()
+        entries: list[WorkerLabel] = []
+        seen: set[WorkerLabel] = set()
+        while url is not None:
+            _guard_page(url, visited)
+            payload, headers = self._get(url)
+            if not isinstance(payload, list):
+                raise GitHubResponseError()
+            for item in payload:
+                label = _worker_label_entry(item)
+                if label is None:
+                    continue
+                if label in seen:
+                    raise GitHubResponseError()
+                seen.add(label)
+                entries.append(label)
+            url = _next_link(_header(headers, "Link"))
+        return tuple(entries)
+
     def _get(
         self, url: str, *, not_found_is_missing: bool = False
     ) -> tuple[object, object]:
-        request = Request(url, headers=self._headers(), method="GET")
+        payload, headers = self._request(
+            url, method="GET", not_found_is_missing=not_found_is_missing
+        )
+        return _decode_json(payload), headers
+
+    def _write(
+        self, url: str, *, method: str, payload: object | None = None
+    ) -> None:
+        body = None
+        if payload is not None:
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self._request(url, method=method, body=body)
+
+    def _request(
+        self,
+        url: str,
+        *,
+        method: str,
+        body: bytes | None = None,
+        not_found_is_missing: bool = False,
+    ) -> tuple[object, object]:
+        headers = self._headers()
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        request = Request(url, data=body, headers=headers, method=method)
         try:
             response = self._opener(request, timeout=self._timeout_seconds)
         except HTTPError as error:
             self._raise_http_error(error, not_found_is_missing)
         except (URLError, TimeoutError, ConnectionError):
             raise GitHubUnavailable() from None
-        return _decode_json(_read_body(response)), getattr(
-            response, "headers", None
-        )
+        return _read_body(response), getattr(response, "headers", None)
 
     def _headers(self) -> dict[str, str]:
         token = self._token_provider()
@@ -372,6 +463,18 @@ def _decode_json(raw: object) -> object:
         return json.loads(text)
     except (TypeError, ValueError):
         raise GitHubResponseError() from None
+
+
+def _worker_label_entry(item: object) -> WorkerLabel | None:
+    """Return a GitKeeper label, or ``None`` when the label is unrelated."""
+    if not isinstance(item, Mapping):
+        raise GitHubResponseError()
+    name = item.get("name")
+    if not isinstance(name, str):
+        raise GitHubResponseError()
+    if name not in _WORKER_LABEL_NAMES:
+        return None
+    return WorkerLabel(name)
 
 
 def _repository_parts(repository: object) -> tuple[str, str]:
