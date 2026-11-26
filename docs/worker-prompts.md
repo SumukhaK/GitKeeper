@@ -1,6 +1,6 @@
 # Worker and reviewer prompts
 
-Three prompts cover every task: start it, review it, send changes back. Replace the `<…>`
+Four prompts cover every task: start it, review it, send changes back, merge it. Replace the `<…>`
 parts before pasting. The issue itself holds the task details; these prompts set the ground
 rules.
 
@@ -11,7 +11,8 @@ rules.
 | Build the task | **Copilot** | 1. Start a task |
 | Review the PR | **DeepSeek** (OpenCode) | 2. Review a PR |
 | Fix review findings | **Copilot** | 3. Send review changes back |
-| Decide and merge | **Owner** | the checklist at the end |
+| Decide | **Owner** | the owner checklist |
+| Merge | **OpenCode** (or the owner) | 4. Merge an approved PR |
 
 The reviewer must always be a different model from the one that wrote the PR.
 
@@ -129,6 +130,39 @@ Update the PR's Verification section with fresh output, push to the
 same branch, reply on the PR point by point with what you changed, then STOP.
 ```
 
+## 4. Merge an approved PR
+
+Give this to **OpenCode** only after a fresh review says `VERDICT: APPROVE` and you have
+replied on the PR to anything under **For the owner**. Replace `<PR>`. It refuses to merge
+if anything is off; if it stops, fix what it reports and run it again.
+
+```
+You are the MERGER for the GitKeeper repository (github.com/SumukhaK/GitKeeper).
+The owner has delegated the merge of PR #<PR> to you, only if every check below passes.
+You never change code, push, or edit the PR.
+
+1. Read the PR state:
+   gh pr view <PR> --json state,isDraft,mergeable,headRefOid,commits,closingIssuesReferences,comments
+2. Find the most recent review comment that ends with a VERDICT block.
+   It must say exactly: VERDICT: APPROVE
+3. The approval must cover the current code: the review comment must be newer
+   than the PR's last commit. If any commit was pushed after the review, STOP:
+   the PR needs a fresh review.
+4. That review's "For the owner" section must say "Nothing.", or every item in it
+   must have an owner reply on the PR. Otherwise STOP and list the open items.
+5. Checks: gh pr checks <PR>
+   Every check must pass. If any is failing or pending, STOP and report which.
+   (Only exception: a failure the owner explicitly exempted in a PR comment.
+   Quote that comment.)
+6. The PR must be open, not a draft, mergeable, and link an issue with "Closes #N".
+7. If and only if 1-6 all pass, merge pinned to the reviewed commit:
+   gh pr merge <PR> --merge --delete-branch --match-head-commit <headRefOid>
+8. Confirm: the PR shows as merged and the linked issue is closed
+   (gh issue view <N> --json state).
+9. Report in 5 lines or fewer: merged or stopped, why, the merge commit, the
+   closed issue. Then STOP. Do not start any other task.
+```
+
 ## Owner checklist after each review
 
 Read only the review's **For the owner** section and its **VERDICT** line:
@@ -139,8 +173,13 @@ Read only the review's **For the owner** section and its **VERDICT** line:
    body), then mention the change on the PR.
 3. **VERDICT: CHANGES_REQUESTED:** give Copilot prompt 3, including your decisions from
    step 1 if they change what the worker must do. Then review again with prompt 2.
-4. **VERDICT: APPROVE:** merge. If a check is red only because of a decision you
-   approved in step 1 (e.g. a one-time exemption), merge anyway and say so on the PR.
+4. **VERDICT: APPROVE:** once your replies from steps 1–2 are on the PR, run prompt 4
+   (or merge yourself). If a check is red only because of a decision you approved in
+   step 1 (e.g. a one-time exemption), say so in a PR comment first; prompt 4 accepts
+   only exemptions written on the PR.
+
+The order always matters: **review → your replies on the PR → merge**. Any push after a
+review needs a fresh review.
 
 ## Assigning work
 
