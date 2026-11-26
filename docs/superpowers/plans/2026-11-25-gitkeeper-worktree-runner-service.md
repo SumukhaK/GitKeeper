@@ -404,7 +404,7 @@ Status vocabulary for delivery evidence: `pending`, `in progress`, `review`, `bl
 | Slice | State | Depends on | Scope |
 | --- | --- | --- | --- |
 | 3A | merged | Slice 1 | worktree records, external registry, path-fenced manager, preservation + tests (registry/manager scope consolidated into 3A by its approved brief) — [PR #20](https://github.com/SumukhaK/GitKeeper/pull/20), merge `921089e0b6b5008b32c85c6419d9adf33dd74a54`, 15 focused + 644 full-suite tests pass |
-| 3B | pending | 3A | registry, worktree manager, preservation |
+| 3B | merged | 3A | trusted Git worktree transport (`worker/git.py`: canonical clone URL, external bare cache, exact-SHA fetch, detached add/HEAD/registration, active-checkout snapshots) + tests — [PR #22](https://github.com/SumukhaK/GitKeeper/pull/22), merge `4d5cdc675be204d39ceedf2480d36e43eb12cac1`, 13 focused + 657 full-suite tests pass. The user's 3A/3B/3C mapping supersedes the earlier registry/Git split: 3A records+registry+manager (PR #20), 3B Git transport (this row), 3C feedback + queue hooks; the 3C–3E rows below keep their original labels until remapped. |
 | 3C | pending | 3B | Git worktree transport |
 | 3D | pending | 3C | DACL helper + feedback store |
 | 3E | pending | 3D, Slice 5 | `FeedbackPort` + service replacement |
