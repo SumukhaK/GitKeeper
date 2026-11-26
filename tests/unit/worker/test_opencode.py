@@ -1,10 +1,12 @@
 import json
 import threading
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 
+from gitkeeper.host_mode.command_broker import ExecutionResult
 from gitkeeper.host_mode.opencode_capability import (
     ControlledConfigError,
     require_inert_worktree,
@@ -32,10 +34,12 @@ from gitkeeper.queue.models import (
     QueueKey,
     RepairReason,
 )
+from gitkeeper.queue.ports import FeedbackBinding
 from gitkeeper.worker.models import (
     FeedbackRecord,
     ProcessCompletion,
     WorkerJob,
+    WorkerResult,
     WorktreeIdentity,
     WorktreeRecord,
 )
@@ -205,7 +209,7 @@ def test_only_the_exact_active_model_can_launch() -> None:
         )
 
 
-def test_64_hex_worker_job_blocks_before_any_broker_request() -> None:
+def test_64_hex_worker_job_blocks_without_broker_request() -> None:
     with pytest.raises(WorkerLaunchBlocked):
         require_launch_sha("a" * 64)
     assert require_launch_sha(_SHA) == _SHA
@@ -244,6 +248,25 @@ def test_prompt_omits_feedback_for_non_claude_reasons(tmp_path) -> None:
 
     assert payload["feedback"] is None
     assert payload["requires_test_change"] is True
+
+
+def test_prompt_omits_stale_check_results(tmp_path) -> None:
+    job = _job(tmp_path)
+    stale = CheckResult(
+        check_id="lint",
+        check_run_id="2",
+        head_sha="b" * 40,
+        conclusion=CheckConclusion.success,
+    )
+    job = replace(
+        job,
+        checks=replace(job.checks, results=(*job.checks.results, stale)),
+    )
+
+    prompt = build_worker_prompt(job)
+    payload = json.loads(prompt[prompt.index("{") :])
+
+    assert payload["checks"] == [["lint", "failure", _SHA]]
 
 
 def test_windows_command_line_and_environment_limits() -> None:
@@ -365,3 +388,84 @@ def test_inert_worktree_blocks_project_plugins(tmp_path) -> None:
 
     with pytest.raises(ControlledConfigError):
         require_inert_worktree(worktree)
+
+
+def test_worker_job_rejects_identity_and_reason_mismatches(tmp_path) -> None:
+    job = _job(tmp_path)
+    other_worktree = replace(
+        job.worktree,
+        identity=replace(job.worktree.identity, head_sha="b" * 40),
+    )
+
+    with pytest.raises(ValueError):
+        replace(job, worktree=other_worktree)
+    with pytest.raises(ValueError):
+        replace(job, checks=replace(job.checks, head_sha="b" * 40))
+
+    claude_job = _job(
+        tmp_path,
+        reason=RepairReason.claude_feedback,
+        feedback_text="feedback",
+    )
+    assert claude_job.feedback is not None
+    with pytest.raises(ValueError):
+        replace(
+            claude_job,
+            feedback=replace(claude_job.feedback, head_sha="b" * 40),
+        )
+    with pytest.raises(TypeError):
+        replace(claude_job, feedback=object())
+    with pytest.raises(ValueError):
+        replace(claude_job, feedback=None)
+
+    binding = FeedbackBinding(
+        feedback_id=str(uuid4()),
+        repository=_REPOSITORY,
+        pr_number=42,
+        head_sha=_SHA,
+        cycle_id=claude_job.feedback.cycle_id,
+        text="feedback",
+        created_at=_AT,
+        attempt_id=None,
+    )
+    with pytest.raises(TypeError):
+        replace(claude_job, feedback=binding)
+
+    with pytest.raises(ValueError):
+        replace(
+            job,
+            repair_reason=RepairReason.manual_retry,
+            requires_test_change=True,
+        )
+    with pytest.raises(ValueError):
+        replace(claude_job, repair_reason=RepairReason.manual_retry)
+    with pytest.raises(TypeError):
+        replace(job, requires_test_change=1)
+
+
+def test_process_completion_requires_an_enum_outcome() -> None:
+    with pytest.raises(TypeError):
+        ProcessCompletion("completed", 0, None)
+    with pytest.raises(ValueError):
+        ProcessCompletion(AttemptOutcome.running, 0, None)
+
+
+def test_worker_result_requires_an_enum_outcome_and_digest() -> None:
+    with pytest.raises(TypeError):
+        WorkerResult("completed", _MODEL, None)
+    with pytest.raises(ValueError):
+        WorkerResult(AttemptOutcome.running, _MODEL, None)
+    with pytest.raises(ValueError):
+        WorkerResult(
+            AttemptOutcome.completed,
+            _MODEL,
+            None,
+            execution=ExecutionResult(0),
+        )
+    with pytest.raises(ValueError):
+        WorkerResult(
+            AttemptOutcome.completed,
+            _MODEL,
+            None,
+            execution_digest="digest",
+        )

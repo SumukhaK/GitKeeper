@@ -112,6 +112,7 @@ def build_worker_prompt(job: WorkerJob) -> str:
     checks = sorted(
         (result.check_id, result.conclusion.value, result.head_sha)
         for result in job.checks.results
+        if result.head_sha == job.checks.head_sha
     )
     feedback = (
         job.feedback.text

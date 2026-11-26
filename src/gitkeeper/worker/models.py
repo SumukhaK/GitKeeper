@@ -255,6 +255,10 @@ class WorkerJob:
             raise TypeError("requires_test_change must be a boolean.")
         if not isinstance(self.checks, CheckState):
             raise TypeError("checks must be CheckState.")
+        if self.feedback is not None and not isinstance(
+            self.feedback, FeedbackRecord
+        ):
+            raise TypeError("feedback must be a FeedbackRecord or None.")
 
         key = self.claim.lease.key
         cycle_id = self.claim.attempt.cycle_id
@@ -294,6 +298,8 @@ class ProcessCompletion:
     error: OperationalError | None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.outcome, AttemptOutcome):
+            raise TypeError("outcome must be an AttemptOutcome.")
         if self.outcome not in _TERMINAL_OUTCOMES:
             raise _invalid("outcome")
         if self.exit_code is not None and (
@@ -314,6 +320,8 @@ class WorkerResult:
     execution_digest: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.outcome, AttemptOutcome):
+            raise TypeError("outcome must be an AttemptOutcome.")
         if self.outcome not in _TERMINAL_OUTCOMES:
             raise _invalid("outcome")
         if self.model_id is not None and not is_opencode_model_id(self.model_id):
