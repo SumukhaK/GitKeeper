@@ -1,6 +1,5 @@
 """Build ready-to-copy worker prompts from already-fetched repository data."""
 
-import re
 from dataclasses import dataclass
 
 
@@ -22,12 +21,6 @@ class CiFailure:
             raise ValueError("summary is required")
 
 
-_WORKER_PROMPT_PLACEHOLDER = re.compile(r"<WORKER PROMPT\s+from the reviewer's verdict block>")
-_ISSUE_BODY_PLACEHOLDER = re.compile(
-    r"<ISSUE_BODY — goal, acceptance criteria, files likely to change, expected proof>"
-)
-
-
 def _require(name: str, value: object) -> None:
     if value is None or (isinstance(value, str) and not value.strip()) or value == ():
         raise ValueError(f"{name} is required")
@@ -45,7 +38,7 @@ def changes_prompt(
     _require("branch", branch)
     _require("worker_prompt", worker_prompt)
     result = template.replace("<PR_NUMBER>", str(pr_number)).replace("<BRANCH>", branch)
-    return _WORKER_PROMPT_PLACEHOLDER.sub(lambda _: worker_prompt, result)
+    return result.replace("<WORKER PROMPT from the reviewer's verdict block>", worker_prompt)
 
 
 def _failure_section(failure: CiFailure) -> str:
@@ -100,4 +93,7 @@ def task_prompt(
         .replace("<ISSUE_TITLE>", issue_title)
         .replace("<ISSUE_BODY>", issue_body)
     )
-    return _ISSUE_BODY_PLACEHOLDER.sub(lambda _: issue_body, result)
+    return result.replace(
+        "<ISSUE_BODY — goal, acceptance criteria, files likely to change, expected proof>",
+        issue_body,
+    )
