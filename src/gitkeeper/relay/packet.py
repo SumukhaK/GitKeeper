@@ -25,9 +25,9 @@ def _issue_section(issue: PacketIssue | None) -> str:
     return f"## Issue #{issue.number}: {issue.title}\n{issue.body}"
 
 
-def _truncate_diff(diff: str, max_chars: int, url: str) -> str:
+def _truncate_diff(diff: str, max_chars: int, url: str) -> tuple[str, str | None]:
     if len(diff) <= max_chars:
-        return diff
+        return diff, None
 
     shown = diff[:max_chars]
     line_boundary = shown.rfind("\n") + 1
@@ -37,7 +37,7 @@ def _truncate_diff(diff: str, max_chars: int, url: str) -> str:
         f"[diff truncated: {len(shown)} of {len(diff)} characters shown — "
         f"review the rest on GitHub: {url}/files]"
     )
-    return f"{shown}\n{notice}"
+    return shown, notice
 
 
 def build_review_packet(
@@ -56,7 +56,10 @@ def build_review_packet(
     checks_text = "## CI results\n" + "\n".join(
         f"- {name}: {conclusion}" for name, conclusion in checks
     )
-    diff_text = f"## Diff\n```diff\n{_truncate_diff(diff, max_diff_chars, pr.url)}\n```"
+    shown_diff, truncation_notice = _truncate_diff(diff, max_diff_chars, pr.url)
+    diff_text = f"## Diff\n```diff\n{shown_diff}\n```"
+    if truncation_notice is not None:
+        diff_text += f"\n{truncation_notice}"
     packet = "\n\n".join((issue_text, pr_text, checks_text, diff_text))
 
     placeholder = "<REVIEW PACKET>"
