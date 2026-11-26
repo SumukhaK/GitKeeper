@@ -33,6 +33,9 @@ def _truncate_diff(diff: str, max_chars: int, url: str) -> tuple[str, str | None
     line_boundary = shown.rfind("\n") + 1
     if line_boundary:
         shown = shown[:line_boundary].rstrip("\n")
+    else:
+        next_newline = diff.find("\n", max_chars)
+        shown = diff if next_newline == -1 else diff[:next_newline]
     notice = (
         f"[diff truncated: {len(shown)} of {len(diff)} characters shown — "
         f"review the rest on GitHub: {url}/files]"
