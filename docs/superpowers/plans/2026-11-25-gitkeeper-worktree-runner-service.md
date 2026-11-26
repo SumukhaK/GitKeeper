@@ -1,5 +1,10 @@
 # GitKeeper Worktree, Runner, and Service Implementation Plan
 
+> **Paused (2026-11-26).** Do not start new slices from this plan. GitKeeper is being re-scoped
+> around the review relay in [`docs/PRD.md`](../../PRD.md); `docs/TECHNICAL.md` (next PR) will say
+> which parts of this plan are kept, cut, or replaced. Already-merged code stays.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Use a fresh implementer and reviewer for each task.
 
 **Goal:** Add preserved per-PR/SHA/cycle worktrees, a real but fail-closed worker executor and fast-forward-only publisher, then compose the queue, reconciler, poller, runner, and existing companion UI protocols without enabling execution by default.

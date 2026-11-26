@@ -1,5 +1,10 @@
 # Queue Persistence and Reconciliation Implementation Plan
 
+> **Paused (2026-11-26).** Do not start new slices from this plan. GitKeeper is being re-scoped
+> around the review relay in [`docs/PRD.md`](../../PRD.md); `docs/TECHNICAL.md` (next PR) will say
+> which parts of this plan are kept, cut, or replaced. Already-merged code stays.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. A fresh implementer and a fresh reviewer are required for every code slice.
 
 **Goal:** Implement the local queue/persistence and GitHub reconciliation portions of the approved pilot without enabling worker execution.

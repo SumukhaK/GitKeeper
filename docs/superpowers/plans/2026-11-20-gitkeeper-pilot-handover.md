@@ -1,5 +1,10 @@
 # GitKeeper Setu-mobile Pilot — Handover Tracker
 
+> **Paused (2026-11-26).** Do not start new slices from this plan. GitKeeper is being re-scoped
+> around the review relay in [`docs/PRD.md`](../../PRD.md); `docs/TECHNICAL.md` (next PR) will say
+> which parts of this plan are kept, cut, or replaced. Already-merged code stays.
+
+
 **Last updated:** 2026-11-26
 
 **Purpose:** Give a new engineer or AI agent enough durable context to continue the pilot without reconstructing decisions from chat history.

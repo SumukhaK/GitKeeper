@@ -1,5 +1,10 @@
 # GitKeeper Local Queue and Worker Implementation Plan
 
+> **Paused (2026-11-26).** Do not start new slices from this plan. GitKeeper is being re-scoped
+> around the review relay in [`docs/PRD.md`](../../PRD.md); `docs/TECHNICAL.md` (next PR) will say
+> which parts of this plan are kept, cut, or replaced. Already-merged code stays.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the private GitKeeper companion's durable local queue, owner-allowlisted PR lifecycle reconciliation, human-confirmed host-mode OpenCode execution, and validated fast-forward publication flow.

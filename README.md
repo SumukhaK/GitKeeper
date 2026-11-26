@@ -1,13 +1,13 @@
 # GitKeeper
 
-A local-first companion that watches GitHub pull requests, queues repair work, and
-shows what a single OpenCode worker is doing — without handing a public repository
-any credentials.
+A local-first companion that runs the pull-request review relay between a reviewer
+(Claude, pasted by the owner) and worker agents (OpenCode, Copilot): it prepares review
+packets, carries requested changes back to the worker, asks the owner to merge, and keeps
+no hand-written status. The product scope is in [`docs/PRD.md`](docs/PRD.md).
 
-GitKeeper is the private application half of a pilot against
-[`SumukhaK/Setu-mobile`](https://github.com/SumukhaK/Setu-mobile). The public
-repository gets only secret-free GitHub Actions config; every privileged action
-happens on the owner's Windows machine.
+> **Re-scoped 2026-11-26.** The review relay in the PRD is now the primary goal; CI-failure
+> repair is a secondary trigger. The queue and worktree plans under `docs/superpowers/plans/`
+> are paused until `docs/TECHNICAL.md` says what is kept. Worker execution stays disabled.
 
 > **Status: pre-alpha, not safe to launch workers yet.**
 > The design contract, the desktop UI foundation, typed host-mode readiness, the
@@ -245,18 +245,8 @@ brainstorm.md  historical design notes; non-authoritative
 
 ## Where to start as the next contributor
 
-Read, in order:
+1. [`docs/PRD.md`](docs/PRD.md) — what GitKeeper does and does not do. This is the source of truth for scope.
+2. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — its trust and safety rules still apply until `docs/TECHNICAL.md` replaces them.
+3. Open GitHub issues — the tracker. Do not start slices from the paused plans.
 
-1. The [design spec](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) — the approved product, trust, and security source of truth.
-2. The [handover tracker](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) — what is complete, what is pending, and the exact next steps.
-3. The [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — the active executable slices and evidence gates.
-4. [`brainstorm.md`](brainstorm.md) — retained historical design notes only; where they differ, the approved design spec wins.
-
-With P0 merged, execute slices 1–7 sequentially. Use a fresh implementer and a
-fresh reviewer for every code slice. No slice is independently reviewed merely
-because P0 or an earlier slice was reviewed. Merge only after that slice's clean
-independent review and passing focused/full tests, and record PR/merge evidence
-before starting the next slice. Source-plan Tasks 3–5 and all worker execution,
-worktree, OpenCode launch,
-publication, UI/settings integration, workflow, and Setu-mobile changes remain out
-of scope. Worker execution must remain disabled.
+Worker execution must remain disabled.
