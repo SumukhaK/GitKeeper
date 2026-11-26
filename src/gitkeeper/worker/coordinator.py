@@ -26,7 +26,7 @@ from gitkeeper.worker.models import (
     WorktreeRecord,
 )
 from gitkeeper.worker.opencode import ApprovalPortBinding, ExecutionGate, WorkerExecutor
-from gitkeeper.worker.publish import PatchPublisher
+from gitkeeper.worker.publish import PatchPublisher, PublishGitPort
 from gitkeeper.worker.worktree import WorktreeManager
 
 _AUTOMATIC_OWNER = "gitkeeper-automatic"
@@ -86,6 +86,7 @@ class WorkerCoordinator:
         self,
         service: QueueServicePort,
         worktrees: WorktreeManager,
+        git: PublishGitPort,
         executor: WorkerExecutor,
         publisher: PatchPublisher,
         targets,
@@ -102,6 +103,8 @@ class WorkerCoordinator:
             getattr(worktrees, "get_by_id", None)
         ):
             raise TypeError("worktrees must provide create() and get_by_id().")
+        if not callable(getattr(git, "head", None)):
+            raise TypeError("git must provide head().")
         if not callable(getattr(executor, "execute", None)):
             raise TypeError("executor must provide execute().")
         if not callable(getattr(publisher, "validate_and_publish", None)):
@@ -118,6 +121,7 @@ class WorkerCoordinator:
             raise TypeError("clock must be callable.")
         self._service = service
         self._worktrees = worktrees
+        self._git = git
         self._executor = executor
         self._publisher = publisher
         self._targets = targets
@@ -186,34 +190,49 @@ class WorkerCoordinator:
                 process_started=False,
             )
 
-        launch = self._launch_facts(claim)
-        model_policy = LocalModelPolicy.load(self._model_policy_path)
-        model_id = model_policy.ladder.active
-        worktree = self._worktrees.create(
-            key.repository,
-            key.pr_number,
-            key.head_sha,
-            claim.attempt.cycle_id,
-        )
-        feedback = self._feedback_record(
-            self._feedback.bind_for_claim(claim) if self._feedback else None
-        )
-        job = WorkerJob(
-            claim=claim,
-            worktree=worktree,
-            model_id=model_id,
-            repair_reason=launch.repair_reason,
-            requires_test_change=(
-                launch.repair_reason is RepairReason.deterministic_check_failure
-            ),
-            feedback=feedback,
-            checks=launch.checks,
-        )
-        target: PublishTarget = self._targets.get_publish_target(
-            key.repository, key.pr_number
-        )
+        try:
+            launch = self._launch_facts(claim)
+            model_policy = LocalModelPolicy.load(self._model_policy_path)
+            model_id = model_policy.ladder.active
+            worktree = self._worktrees.create(
+                key.repository,
+                key.pr_number,
+                key.head_sha,
+                claim.attempt.cycle_id,
+            )
+            feedback = self._feedback_record(
+                self._feedback.bind_for_claim(claim) if self._feedback else None
+            )
+            job = WorkerJob(
+                claim=claim,
+                worktree=worktree,
+                model_id=model_id,
+                repair_reason=launch.repair_reason,
+                requires_test_change=(
+                    launch.repair_reason
+                    is RepairReason.deterministic_check_failure
+                ),
+                feedback=feedback,
+                checks=launch.checks,
+            )
+            target: PublishTarget = self._targets.get_publish_target(
+                key.repository, key.pr_number
+            )
+        except Exception:
+            error = self._error()
+            self._service.block_reserved(claim, error)
+            return WorkerResult(
+                outcome=AttemptOutcome.cancelled,
+                model_id=None,
+                error=error,
+                process_started=False,
+            )
+
         cancellation = threading.Event()
-        self._active_cancellation = cancellation
+        with self._lock:
+            if self._stop.is_set():
+                cancellation.set()
+            self._active_cancellation = cancellation
         started = False
 
         def before_start() -> None:
@@ -226,7 +245,7 @@ class WorkerCoordinator:
                 job,
                 cancellation,
                 approval_port=self._approval.get(),
-                facts=lambda: launch.pull_request,
+                facts=lambda: self._launch_facts(claim).pull_request,
                 before_start=before_start,
             )
         except Exception:
@@ -383,10 +402,30 @@ class WorkerCoordinator:
             return
         for intent in pending():
             worktree = self._worktrees.get_by_id(intent.worktree_id)
+            escalate = getattr(
+                self._service, "escalate_unassociated_publication_intent", None
+            )
             if worktree is None:
-                escalate = getattr(
-                    self._service, "escalate_unassociated_publication_intent", None
-                )
+                if callable(escalate):
+                    escalate(intent)
+                continue
+            identity = worktree.identity
+            if (
+                identity.repository != intent.key.repository
+                or identity.pr_number != intent.key.pr_number
+                or identity.cycle_id != intent.cycle_id
+                or identity.head_sha != intent.starting_sha
+            ):
+                if callable(escalate):
+                    escalate(intent)
+                continue
+            try:
+                head = self._git.head(worktree.path)
+            except Exception:
+                if callable(escalate):
+                    escalate(intent)
+                continue
+            if head != intent.local_commit_sha:
                 if callable(escalate):
                     escalate(intent)
                 continue
@@ -415,6 +454,10 @@ class WorkerCoordinator:
             except Exception:  # noqa: BLE001 - transport/persistence failure
                 claim = None
             if claim is None:
+                try:
+                    self.recover()
+                except Exception:  # noqa: BLE001 - retry on the next idle pass
+                    pass
                 stop.wait(1.0)
                 continue
             try:

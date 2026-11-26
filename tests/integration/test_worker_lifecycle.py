@@ -20,6 +20,7 @@ from gitkeeper.queue.models import (
     InvocationAttempt,
     InvocationKind,
     Lease,
+    PublicationIntent,
     QueueKey,
     RepairReason,
 )
@@ -65,9 +66,17 @@ class FakeService:
         self.escalated = []
         self.recovered = 0
         self.pending = []
+        self.authorizations = []
+        self.retry_authorization = False
 
     def claim(self, pr_number, head_sha, owner, retry_authorization=None):
+        self.authorizations.append(retry_authorization)
         return self.claim_result
+
+    def get_retry_authorization(self, pr_number):
+        if self.retry_authorization:
+            return SimpleNamespace(authorization="retry-auth")
+        return None
 
     def start(self, claim, model_id):
         self.starts.append((claim, model_id))
@@ -156,6 +165,16 @@ class FakeFeedback:
         return None
 
 
+class FakeGit:
+    def __init__(self, head: str = _LOCAL) -> None:
+        self._head = head
+        self.calls = 0
+
+    def head(self, path):
+        self.calls += 1
+        return self._head
+
+
 def _claim(kind: InvocationKind = InvocationKind.automatic) -> ClaimResult:
     cycle = str(uuid4())
     attempt_id = str(uuid4())
@@ -207,6 +226,25 @@ def _worktree(claim: ClaimResult, tmp_path) -> WorktreeRecord:
         created_at=_AT,
         preserved_reason=None,
     )
+
+
+def _intent(record: WorktreeRecord, **overrides) -> PublicationIntent:
+    values = {
+        "intent_id": str(uuid4()),
+        "attempt_id": str(uuid4()),
+        "key": QueueKey(
+            record.identity.repository,
+            record.identity.pr_number,
+            record.identity.head_sha,
+        ),
+        "cycle_id": record.identity.cycle_id,
+        "worktree_id": record.worktree_id,
+        "starting_sha": record.identity.head_sha,
+        "local_commit_sha": _LOCAL,
+        "recorded_at": _AT,
+    }
+    values.update(overrides)
+    return PublicationIntent(**values)
 
 
 def _target() -> PublishTarget:
@@ -270,6 +308,8 @@ def _coordinator(
     record=None,
     gate=None,
     approval=None,
+    git=None,
+    launch_facts=None,
 ):
     policy_path = tmp_path / "models.json"
     policy_path.write_text(
@@ -286,11 +326,12 @@ def _coordinator(
     return WorkerCoordinator(
         service=service,
         worktrees=FakeWorktrees(worktree),
+        git=git or FakeGit(),
         executor=executor,
         publisher=publisher or FakePublisher(),
         targets=FakeTargets(_target()),
         model_policy_path=policy_path,
-        launch_facts=lambda claim: _launch(claim),
+        launch_facts=launch_facts or (lambda claim: _launch(claim)),
         feedback=FakeFeedback(),
         gate=gate or ExecutionGate(execution_disabled=False),
         approval=binding,
@@ -447,12 +488,8 @@ def test_recover_associates_exact_intents_and_escalates_missing_ones(
     coordinator, _ = _coordinator(
         tmp_path, service, FakeExecutor(), record=record
     )
-    exact = SimpleNamespace(
-        worktree_id=record.worktree_id, local_commit_sha=_LOCAL
-    )
-    missing = SimpleNamespace(
-        worktree_id=str(uuid4()), local_commit_sha=_LOCAL
-    )
+    exact = _intent(record)
+    missing = _intent(record, worktree_id=str(uuid4()))
     service.pending = [exact, missing]
 
     coordinator.recover()
@@ -462,6 +499,87 @@ def test_recover_associates_exact_intents_and_escalates_missing_ones(
     ]
     assert service.escalated == [missing]
     assert service.recovered == 1
+
+
+@pytest.mark.parametrize(
+    "case",
+    ("repo", "pr", "cycle", "starting", "head_starting", "head_other", "head_error"),
+)
+def test_recovery_escalates_identity_or_head_mismatches(tmp_path, case) -> None:
+    claim = _claim()
+    record = _worktree(claim, tmp_path)
+    service = FakeService(claim)
+    git = FakeGit()
+    coordinator, _ = _coordinator(
+        tmp_path, service, FakeExecutor(), record=record, git=git
+    )
+    intent = _intent(record)
+    if case == "repo":
+        intent = _intent(
+            record, key=QueueKey("Other/Repo", 42, _SHA)
+        )
+    elif case == "pr":
+        intent = _intent(
+            record, key=QueueKey(_REPOSITORY, 43, _SHA)
+        )
+    elif case == "cycle":
+        intent = _intent(record, cycle_id=str(uuid4()))
+    elif case == "starting":
+        intent = _intent(record, starting_sha="c" * 40)
+    elif case == "head_starting":
+        git._head = _SHA
+    elif case == "head_other":
+        git._head = "c" * 40
+    elif case == "head_error":
+        git.head = lambda path: (_ for _ in ()).throw(
+            RuntimeError("head unavailable")
+        )
+    service.pending = [intent]
+
+    coordinator.recover()
+
+    assert service.escalated == [intent]
+    assert service.notes == []
+
+
+def test_try_claim_passes_the_retry_authorization(tmp_path) -> None:
+    claim = _claim()
+    service = FakeService(
+        claim,
+        items=[
+            SimpleNamespace(
+                pr_number=42, current_head_sha=_SHA, state="queued"
+            )
+        ],
+    )
+    service.retry_authorization = True
+    coordinator, _ = _coordinator(tmp_path, service, FakeExecutor())
+
+    assert coordinator.try_claim() is claim
+    assert service.authorizations == ["retry-auth"]
+
+
+def test_pre_start_construction_failure_blocks_reserved(tmp_path) -> None:
+    claim = _claim()
+    service = FakeService(claim)
+
+    def failing(_claim):
+        raise RuntimeError("launch facts unavailable")
+
+    coordinator, _ = _coordinator(
+        tmp_path,
+        service,
+        FakeExecutor(),
+        record=_worktree(claim, tmp_path),
+        launch_facts=failing,
+    )
+
+    result = coordinator.run_claim(claim)
+
+    assert result.outcome is AttemptOutcome.cancelled
+    assert service.blocked
+    assert service.starts == []
+    assert service.completions == []
 
 
 def test_start_stop_is_single_flight_and_interruptible(tmp_path) -> None:
