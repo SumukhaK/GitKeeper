@@ -14,6 +14,7 @@ import base64
 import json
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 
 import pytest
 
@@ -26,6 +27,7 @@ from gitkeeper.queue import (
     PilotConfig,
     PullRequestNotFound,
     PullRequestSnapshot,
+    WorkerLabel,
 )
 from gitkeeper.queue.github import GitHubControlPlane, GitHubRestClient
 
@@ -42,6 +44,10 @@ DEFAULT_BRANCH = "main"
 RUN_ID = 901
 SUITE_ID = 77
 REQUIRED = ("ci/lint", "ci/test")
+LABEL_QUEUED = "gitkeeper/worker-queued"
+LABEL_RUNNING = "gitkeeper/worker-running"
+LABEL_BLOCKED = "gitkeeper/worker-blocked"
+UNRELATED_LABEL = "bug"
 
 AUTHORIZATION_MESSAGE = "GitHub authorization failed."
 UNAVAILABLE_MESSAGE = "GitHub is unavailable."
@@ -197,6 +203,27 @@ def _contents_payload(body, *, content=None, encoding="base64"):
 
 def _http_error(status, *, url=f"{API}/repos/{REPOSITORY}/pulls"):
     return HTTPError(url, status, "boom", {"X-Secret": TOKEN}, None)
+
+
+def _label(name):
+    return {"name": name}
+
+
+def _delete_label_url(name):
+    return (
+        f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/labels/"
+        f"{quote(name, safe='')}"
+    )
+
+
+def _labels_url():
+    return (
+        f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/labels?per_page=100"
+    )
+
+
+def _add_labels_url():
+    return f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/labels"
 
 
 # --- tokens and shared request shape -------------------------------------
@@ -1009,7 +1036,7 @@ def test_failures_are_not_retried():
     assert len(opener.calls) == 1
 
 
-def test_control_plane_protocol_keeps_label_surface_for_later_slice():
+def test_control_plane_protocol_exposes_worker_label_surface():
     declared = set(GitHubControlPlane.__dict__)
     assert declared >= {
         "list_open_pull_requests",
@@ -1019,5 +1046,508 @@ def test_control_plane_protocol_keeps_label_surface_for_later_slice():
         "get_worker_labels",
         "set_worker_label",
     }
-    assert not hasattr(GitHubRestClient, "get_worker_labels")
-    assert not hasattr(GitHubRestClient, "set_worker_label")
+    assert hasattr(GitHubRestClient, "get_worker_labels")
+    assert hasattr(GitHubRestClient, "set_worker_label")
+
+
+# --- worker labels -------------------------------------------------------
+
+
+def test_get_worker_labels_filters_exact_names_and_preserves_order():
+    client, opener = _client(
+        _Response(
+            [
+                _label(LABEL_QUEUED),
+                _label(UNRELATED_LABEL),
+                _label(LABEL_RUNNING),
+                _label(f"{LABEL_BLOCKED}-extra"),
+                _label(LABEL_QUEUED.upper()),
+            ]
+        )
+    )
+
+    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+    assert labels == (WorkerLabel.queued, WorkerLabel.running)
+    assert [call["url"] for call in opener.calls] == [_labels_url()]
+
+
+def test_get_worker_labels_follows_next_links():
+    next_url = (
+        f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/labels"
+        "?per_page=100&page=2"
+    )
+    client, opener = _client(
+        _Response(
+            [_label(LABEL_BLOCKED)],
+            {"Link": f'<{next_url}>; rel="next"'},
+        ),
+        _Response([_label(LABEL_QUEUED)]),
+    )
+
+    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+    assert labels == (WorkerLabel.blocked, WorkerLabel.queued)
+    assert [call["url"] for call in opener.calls] == [
+        _labels_url(),
+        next_url,
+    ]
+
+
+def test_get_worker_labels_ignores_unrelated_label_url_shapes():
+    client, _ = _client(
+        _Response([{"name": UNRELATED_LABEL}, _label(LABEL_QUEUED)])
+    )
+
+    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+    assert labels == (WorkerLabel.queued,)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"name": LABEL_QUEUED},
+        ["not-a-label-object"],
+        [None],
+        [{"url": f"{API}/repos/{REPOSITORY}/labels/{LABEL_QUEUED}"}],
+        [{"name": 9}],
+        [{"name": None}],
+        [_label(LABEL_QUEUED), _label(LABEL_QUEUED)],
+    ],
+)
+def test_get_worker_labels_rejects_malformed_label_objects(payload):
+    client, opener = _client(_Response(payload))
+
+    with pytest.raises(GitHubResponseError) as info:
+        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+    assert str(info.value) == RESPONSE_MESSAGE
+    assert len(opener.calls) == 1
+
+
+def test_get_worker_labels_rejects_duplicates_across_pages():
+    next_url = (
+        f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/labels"
+        "?per_page=100&page=2"
+    )
+    client, _ = _client(
+        _Response(
+            [_label(LABEL_QUEUED)],
+            {"Link": f'<{next_url}>; rel="next"'},
+        ),
+        _Response([_label(LABEL_QUEUED)]),
+    )
+
+    with pytest.raises(GitHubResponseError):
+        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+
+def test_get_worker_labels_404_is_response_error_not_missing_pull_request():
+    client, _ = _client(_http_error(404, url=_labels_url()))
+
+    with pytest.raises(GitHubResponseError) as info:
+        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+
+    assert not isinstance(info.value, PullRequestNotFound)
+
+
+@pytest.mark.parametrize(
+    "repository, pr_number",
+    [
+        ("", PR_NUMBER),
+        ("owner", PR_NUMBER),
+        ("owner/", PR_NUMBER),
+        ("owner/repo/extra", PR_NUMBER),
+        (None, PR_NUMBER),
+        (REPOSITORY, 0),
+        (REPOSITORY, -1),
+        (REPOSITORY, "42"),
+        (REPOSITORY, True),
+    ],
+)
+def test_worker_label_arguments_are_validated_before_any_request(
+    repository, pr_number
+):
+    read_client, read_opener = _client(_Response([]))
+    with pytest.raises(GitHubResponseError):
+        _run(read_client.get_worker_labels(repository, pr_number))
+    assert read_opener.calls == []
+
+    set_client, set_opener = _client(_Response([]))
+    with pytest.raises(GitHubResponseError):
+        _run(
+            set_client.set_worker_label(
+                repository, pr_number, WorkerLabel.queued
+            )
+        )
+    assert set_opener.calls == []
+
+
+def test_set_worker_label_rejects_untyped_label_before_any_request():
+    client, opener = _client(_Response([]))
+
+    with pytest.raises(GitHubResponseError):
+        _run(
+            client.set_worker_label(REPOSITORY, PR_NUMBER, LABEL_QUEUED)
+        )
+
+    assert opener.calls == []
+
+
+def test_set_worker_label_converges_from_conflicting_label():
+    client, opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_QUEUED)]),
+    )
+
+    result = _run(
+        client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued)
+    )
+
+    assert result is None
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "DELETE",
+        "POST",
+        "GET",
+    ]
+    assert [call["url"] for call in opener.calls] == [
+        _labels_url(),
+        _delete_label_url(LABEL_RUNNING),
+        _add_labels_url(),
+        _labels_url(),
+    ]
+    delete_request = opener.calls[1]["request"]
+    assert delete_request.data is None
+    post_request = opener.calls[2]["request"]
+    assert json.loads(post_request.data.decode("utf-8")) == {
+        "labels": [LABEL_QUEUED]
+    }
+    post_headers = {
+        key.lower(): value for key, value in post_request.header_items()
+    }
+    assert post_headers == {
+        "accept": "application/vnd.github+json",
+        "authorization": f"Bearer {TOKEN}",
+        "user-agent": "GitKeeper",
+        "content-type": "application/json",
+    }
+    get_headers = {
+        key.lower(): value
+        for key, value in opener.calls[0]["request"].header_items()
+    }
+    assert "content-type" not in get_headers
+
+
+def test_set_worker_label_deletes_per_pr_assignment_not_definition():
+    definition_url = (
+        f"{API}/repos/{REPOSITORY}/labels/{quote(LABEL_BLOCKED, safe='')}"
+    )
+    decoy_url = f"{API}/repos/Other/Repo/labels/{LABEL_BLOCKED}"
+    client, opener = _client(
+        _Response(
+            [
+                {"name": LABEL_BLOCKED, "url": definition_url},
+                {"name": UNRELATED_LABEL, "url": decoy_url},
+            ]
+        ),
+        _Response([]),
+        _Response([]),
+    )
+
+    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+
+    assert opener.calls[1]["request"].get_method() == "DELETE"
+    assert opener.calls[1]["url"] == _delete_label_url(LABEL_BLOCKED)
+    assert opener.calls[2]["url"] == _labels_url()
+    issued = [call["url"] for call in opener.calls]
+    assert definition_url not in issued
+    assert decoy_url not in issued
+
+
+def test_set_worker_label_clears_to_no_label_without_posting():
+    client, opener = _client(
+        _Response([_label(LABEL_BLOCKED)]),
+        _Response([]),
+        _Response([]),
+    )
+
+    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "DELETE",
+        "GET",
+    ]
+    assert [call["url"] for call in opener.calls[1:]] == [
+        _delete_label_url(LABEL_BLOCKED),
+        _labels_url(),
+    ]
+
+
+def test_set_worker_label_is_a_noop_when_already_converged():
+    matching_client, matching_opener = _client(
+        _Response([_label(LABEL_QUEUED)])
+    )
+    _run(
+        matching_client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
+        )
+    )
+    assert len(matching_opener.calls) == 1
+
+    empty_client, empty_opener = _client(_Response([]))
+    _run(empty_client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+    assert len(empty_opener.calls) == 1
+
+
+def test_set_worker_label_rejects_multiple_current_labels_before_mutation():
+    client, opener = _client(
+        _Response([_label(LABEL_QUEUED), _label(LABEL_RUNNING)])
+    )
+
+    with pytest.raises(GitHubResponseError) as info:
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert str(info.value) == RESPONSE_MESSAGE
+    assert len(opener.calls) == 1
+
+
+def test_set_worker_label_initial_read_failure_issues_no_mutation():
+    client, opener = _client(_http_error(404, url=_labels_url()))
+
+    with pytest.raises(GitHubResponseError):
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert [call["request"].get_method() for call in opener.calls] == ["GET"]
+
+
+def test_set_worker_label_delete_failure_stops_before_posting():
+    client, opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _http_error(500, url=_delete_label_url(LABEL_RUNNING)),
+    )
+
+    with pytest.raises(GitHubUnavailable):
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "DELETE",
+    ]
+
+
+def test_set_worker_label_post_failure_raises():
+    client, opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _http_error(422, url=_add_labels_url()),
+    )
+
+    with pytest.raises(GitHubResponseError):
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "DELETE",
+        "POST",
+    ]
+
+
+def test_set_worker_label_final_read_failure_is_not_success():
+    client, opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _http_error(500, url=_labels_url()),
+    )
+
+    with pytest.raises(GitHubUnavailable):
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "DELETE",
+        "POST",
+        "GET",
+    ]
+
+
+def test_set_worker_label_final_read_mismatch_raises():
+    client, _ = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_RUNNING)]),
+    )
+
+    with pytest.raises(GitHubResponseError) as info:
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert str(info.value) == RESPONSE_MESSAGE
+
+
+def test_set_worker_label_final_read_of_extra_worker_label_raises():
+    client, _ = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_QUEUED), _label(LABEL_BLOCKED)]),
+    )
+
+    with pytest.raises(GitHubResponseError):
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+
+def test_set_worker_label_later_call_repairs_partial_state():
+    client, opener = _client(
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_QUEUED)]),
+    )
+
+    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued))
+
+    assert [call["request"].get_method() for call in opener.calls] == [
+        "GET",
+        "POST",
+        "GET",
+    ]
+
+
+def test_set_worker_label_preserves_unrelated_labels():
+    client, opener = _client(
+        _Response([_label(UNRELATED_LABEL), _label(LABEL_RUNNING)]),
+        _Response([_label(UNRELATED_LABEL)]),
+        _Response([_label(UNRELATED_LABEL), _label(LABEL_QUEUED)]),
+        _Response([_label(UNRELATED_LABEL), _label(LABEL_QUEUED)]),
+    )
+
+    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued))
+
+    assert [call["url"] for call in opener.calls] == [
+        _labels_url(),
+        _delete_label_url(LABEL_RUNNING),
+        _add_labels_url(),
+        _labels_url(),
+    ]
+    post_request = opener.calls[2]["request"]
+    assert json.loads(post_request.data.decode("utf-8")) == {
+        "labels": [LABEL_QUEUED]
+    }
+
+
+def test_set_worker_label_repairs_conflict_after_failed_mutation():
+    failing_client, failing_opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _http_error(500, url=_delete_label_url(LABEL_RUNNING)),
+    )
+
+    with pytest.raises(GitHubUnavailable):
+        _run(
+            failing_client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    assert [
+        call["request"].get_method() for call in failing_opener.calls
+    ] == ["GET", "DELETE"]
+
+    retry_client, retry_opener = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_QUEUED)]),
+    )
+
+    _run(
+        retry_client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
+        )
+    )
+
+    assert [
+        call["request"].get_method() for call in retry_opener.calls
+    ] == ["GET", "DELETE", "POST", "GET"]
+    assert [call["url"] for call in retry_opener.calls] == [
+        _labels_url(),
+        _delete_label_url(LABEL_RUNNING),
+        _add_labels_url(),
+        _labels_url(),
+    ]
+
+
+def test_worker_label_failures_never_leak_details():
+    client, _ = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _http_error(
+            403,
+            url=f"{_delete_label_url(LABEL_RUNNING)}?access_token={TOKEN}",
+        ),
+    )
+
+    with pytest.raises(GitHubAuthorizationError) as info:
+        _run(
+            client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+
+    error = info.value
+    assert str(error) == AUTHORIZATION_MESSAGE
+    assert error.args == (AUTHORIZATION_MESSAGE,)
+    assert error.__cause__ is None
+    representation = repr(error)
+    assert TOKEN not in representation
+    assert API not in representation
+    assert LABEL_RUNNING not in representation
+
+    mismatch_client, _ = _client(
+        _Response([_label(LABEL_RUNNING)]),
+        _Response([]),
+        _Response([_label(LABEL_QUEUED)]),
+        _Response([_label(LABEL_RUNNING)]),
+    )
+    with pytest.raises(GitHubResponseError) as mismatch_info:
+        _run(
+            mismatch_client.set_worker_label(
+                REPOSITORY, PR_NUMBER, WorkerLabel.queued
+            )
+        )
+    mismatch_repr = repr(mismatch_info.value)
+    assert mismatch_info.value.args == (RESPONSE_MESSAGE,)
+    assert TOKEN not in mismatch_repr
+    assert API not in mismatch_repr
+    assert LABEL_RUNNING not in mismatch_repr
