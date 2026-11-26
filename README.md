@@ -17,14 +17,19 @@ happens on the owner's Windows machine.
 > reconciliation and the worktree lifecycle are **not** implemented, so worker
 > execution stays disabled on purpose. Slice 1 is merged from
 > [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15) at
-> `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 persistence is implemented
-> at `091507a` and awaiting independent review.
+> `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 SQLite queue/cycle/lease
+> persistence is merged from [PR #16](https://github.com/SumukhaK/GitKeeper/pull/16)
+> at `9318e450823c17b1b2a2c2ca428e861c0a9bc8d6` after independent review. The
+> atomic PR/commit guidelines are merged from
+> [PR #17](https://github.com/SumukhaK/GitKeeper/pull/17) at
+> `341baea33ffce36a49e6e65d90a3d8719bd18127`.
 
 ## What works today
 
 | Area | State |
 | --- | --- |
 | Design spec and decisions | Complete — [`docs/superpowers/specs/`](docs/superpowers/specs/2026-11-20-gitkeeper-setu-mobile-pilot-design.md) |
+| Atomic PR/commit guidelines | Merged in [PR #17](https://github.com/SumukhaK/GitKeeper/pull/17) — [`.github/copilot-instructions.md`](.github/copilot-instructions.md) |
 | Handover tracker | Complete — [`docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md`](docs/superpowers/plans/2026-11-20-gitkeeper-pilot-handover.md) |
 | Companion UI (fox pet, handscroll, queue/status/settings/telemetry pages) | Built against fakes, integration pending |
 | Host-mode readiness policy | Complete (`src/gitkeeper/host_mode/readiness.py`) — typed `ACCEPTED_HOST_MODE` gate, launch blocked |
@@ -33,19 +38,19 @@ happens on the owner's Windows machine.
 | One-shot command approval broker | Complete (`src/gitkeeper/host_mode/command_broker.py`) — shows every request line, approves once, denies by default |
 | Approval overlay in the handscroll | Built and tested against the real view model (`src/gitkeeper/ui/qml/CommandApprovalDialog.qml`) |
 | OpenCode command mediation | Proven for CLI `1.19.6` (`src/gitkeeper/host_mode/opencode_capability.py`, `broker_plugin/`) — see [`host-mode-command-broker-result.md`](docs/superpowers/host-mode-command-broker-result.md) |
-| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 merged in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15); Slice 2 implemented and under review; slices 3–7 pending |
-| Queue, leases, GitHub label reconciliation, worktrees | Domain contracts and SQLite persistence/lease/cycle/attempt storage implemented; GitHub reconciliation and worktrees not implemented; Slice 2 code not merged |
+| Queue persistence and GitHub reconciliation | [Executable plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md) — planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) merged; Slice 1 merged in PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15); Slice 2 merged in PR [#16](https://github.com/SumukhaK/GitKeeper/pull/16); slices 3–7 pending |
+| Queue, leases, GitHub label reconciliation, worktrees | Domain contracts and SQLite persistence/lease/cycle/attempt storage merged in PR [#16](https://github.com/SumukhaK/GitKeeper/pull/16); GitHub reconciliation and worktrees not implemented |
 | Worker wiring (real executor, worktree lifecycle, service integration) | [Detailed plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for source-plan Tasks 3–5 — merged plan; implementation pending |
 
 ## Queue implementation status
 
-The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). Planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds and approval of `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Slice 1 (domain contracts and readiness-reason adapter) is implemented at `6be6122`, with the reviewed telemetry projection corrected at `f44ed8b`; 199 queue tests, 236 combined queue/readiness tests, and 564 full-suite tests pass. It passed scoped independent re-review and merged from PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15) at `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`. Slices 1–3 fulfill original Task 1 and slices 4–7 fulfill original Task 2. Source-plan Tasks 3–5 have a separate merged [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes worker enablement.
+The active scope is the [queue persistence and reconciliation plan](docs/superpowers/plans/2026-11-25-gitkeeper-queue-persistence-reconciliation.md). Planning PR [#14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0` after seven independent review rounds and approval of `e836ab513b2cab5a74ec4f1508045d9efbb1b6b8`. Slice 1 (domain contracts and readiness-reason adapter) is implemented at `6be6122`, with the reviewed telemetry projection corrected at `f44ed8b`; 199 queue tests, 236 combined queue/readiness tests, and 564 full-suite tests pass. It passed scoped independent re-review and merged from PR [#15](https://github.com/SumukhaK/GitKeeper/pull/15) at `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`. Slice 2 adds SQLite queue/cycle/lease persistence, attempts, manual retry latches, publication intents, and projection fences; it passed two independent fix rounds and merged from PR [#16](https://github.com/SumukhaK/GitKeeper/pull/16) at `9318e450823c17b1b2a2c2ca428e861c0a9bc8d6` with 264 focused and 629 full-suite tests passing. Slices 1–3 fulfill original Task 1 and slices 4–7 fulfill original Task 2. Source-plan Tasks 3–5 have a separate merged [worktree, runner, and service plan](docs/superpowers/plans/2026-11-25-gitkeeper-worktree-runner-service.md) for later handoff; neither plan authorizes worker enablement.
 
 | Slice | Scope | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
 | P0 | Publish plan, status tracking, and README/handover correction | merged | [#14](https://github.com/SumukhaK/GitKeeper/pull/14) | `45a16255e694c372f1b970ad532a72d352c8d3a0` |
 | 1 | Domain contracts and readiness-reason adapter | merged | [#15](https://github.com/SumukhaK/GitKeeper/pull/15) | `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47` |
-| 2 | SQLite queue/cycle/lease persistence | implemented at `091507a`; 259 focused + 624 full-suite tests pass; independent review pending | — | — |
+| 2 | SQLite queue/cycle/lease persistence | merged after independent review; 264 focused + 629 full-suite tests pass | [#16](https://github.com/SumukhaK/GitKeeper/pull/16) | `9318e450823c17b1b2a2c2ca428e861c0a9bc8d6` |
 | 3 | Operational-only telemetry persistence | pending | — | — |
 | 4 | GitHub read/config/label REST adapter | pending | — | — |
 | 5 | Queue service and label/budget transitions | pending | — | — |
@@ -76,9 +81,9 @@ test suite: `py -m pytest tests/ui -q`.
 
 | Command | What it does |
 | --- | --- |
-| `py -m pytest -q` | Full suite (624 tests) |
+| `py -m pytest -q` | Full suite (629 tests) |
 | `py -m pytest tests/test_queue_models.py tests/host_mode/test_readiness.py -q` | Queue domain contracts and readiness regressions (221 tests) |
-| `py -m pytest tests/test_queue_models.py tests/test_queue_store.py -q` | Queue domain and SQLite persistence contracts (259 tests) |
+| `py -m pytest tests/test_queue_models.py tests/test_queue_store.py -q` | Queue domain and SQLite persistence contracts (264 tests) |
 | `py -m pytest tests/host_mode -q` | Typed readiness blockers, the approval broker, and OpenCode mediation |
 | `py -m pytest tests/policy -q` | Model ladder, patch scope, manifest capability |
 | `py -m pytest tests/ui -q` | View models and QML accessibility checks |

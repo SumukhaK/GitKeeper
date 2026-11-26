@@ -12,7 +12,7 @@
 
 ## Execution status
 
-The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0`. Slice 1's queue domain contracts are merged from [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15) at `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 persistence is implemented at `091507a` with 259 focused and 624 full-suite tests passing and awaits independent review; slices 3–7 remain pending, and worker execution stays disabled.
+The active queue/persistence/reconciliation scope is divided into slices that each require fresh independent review in the [detailed queue plan](2026-11-25-gitkeeper-queue-persistence-reconciliation.md). The combined Tasks 1–5 documentation in [PR #14](https://github.com/SumukhaK/GitKeeper/pull/14) is merged at `45a16255e694c372f1b970ad532a72d352c8d3a0`. Slice 1's queue domain contracts are merged from [PR #15](https://github.com/SumukhaK/GitKeeper/pull/15) at `29ba84e390ef53d9fe9dc1fd30d74a811c8b9f47`; Slice 2 SQLite persistence is merged from PR [#16](https://github.com/SumukhaK/GitKeeper/pull/16) at `9318e450823c17b1b2a2c2ca428e861c0a9bc8d6` with 264 focused and 629 full-suite tests passing after independent review; slices 3–7 remain pending, and worker execution stays disabled.
 
 | Original task | Detailed plan / slices | Status | PR | Merge commit |
 | --- | --- | --- | --- | --- |
