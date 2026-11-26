@@ -733,7 +733,7 @@ class GitCliTransport:
             if line.startswith("diff --git "):
                 current = None
                 in_hunk = False
-            elif line.startswith("+++ "):
+            elif not in_hunk and line.startswith("+++ "):
                 target = line[4:]
                 if target == "/dev/null":
                     current = None
