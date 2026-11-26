@@ -74,6 +74,24 @@ def test_truncates_diff_at_a_complete_line_with_character_counts() -> None:
     assert packet.endswith(notice)
 
 
+def test_keeps_a_first_line_longer_than_the_limit() -> None:
+    long_line = "x" * 100
+    diff = f"{long_line}\nsecond line"
+    kwargs = _kwargs()
+    kwargs["diff"] = diff
+    kwargs["max_diff_chars"] = 20
+
+    packet = build_review_packet(**kwargs)
+
+    assert f"```diff\n{long_line}\n```" in packet
+    assert "second line" not in packet
+    notice = (
+        f"[diff truncated: 100 of {len(diff)} characters shown — review the rest on GitHub: "
+        "https://github.com/SumukhaK/GitKeeper/pull/58/files]"
+    )
+    assert packet.endswith(notice)
+
+
 def test_does_not_truncate_diff_at_or_below_limit() -> None:
     diff = "diff --git a/src/packet.py b/src/packet.py\n+packet = True"
     assert len(diff) == 57
