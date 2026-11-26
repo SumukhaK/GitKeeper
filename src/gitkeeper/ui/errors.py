@@ -1,6 +1,5 @@
 from typing import Literal
 
-
 ErrorCategory = Literal["remote_connectivity", "local_persistence", "unknown"]
 TelemetryErrorCategory = Literal["local_persistence", "unknown"]
 

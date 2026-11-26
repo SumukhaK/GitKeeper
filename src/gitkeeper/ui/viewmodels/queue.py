@@ -1,5 +1,5 @@
-from collections.abc import Mapping
-from typing import Any, Callable
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
@@ -44,9 +44,7 @@ class QueueViewModel(QObject):
     def _to_qml_item(cls, item: Any) -> dict[str, Any]:
         state = cls._enum_value(cls._value(item, "state"), _WORKER_STATES)
         reason = cls._enum_value(cls._value(item, "reason"), _REPAIR_REASONS)
-        check_state = cls._enum_value(
-            cls._value(item, "check_state"), _CHECK_STATES
-        )
+        check_state = cls._enum_value(cls._value(item, "check_state"), _CHECK_STATES)
         error = cls._value(item, "last_error")
         error_category = cls._value(error, "category") if error is not None else None
         labels = cls._value(item, "remote_labels", ()) or ()
@@ -58,9 +56,7 @@ class QueueViewModel(QObject):
             "check_state": check_state,
             "state": state,
             "reason": reason,
-            "automatic_attempt_count": cls._value(
-                item, "automatic_attempt_count", 0
-            ),
+            "automatic_attempt_count": cls._value(item, "automatic_attempt_count", 0),
             "manual_retry_count": cls._value(item, "manual_retry_count", 0),
             "last_error_category": error_category,
             "remote_labels": [label for label in labels if label in _WORKER_LABELS],
@@ -177,11 +173,7 @@ class QueueViewModel(QObject):
         failure_message: str,
     ) -> bool:
         item = next(
-            (
-                item
-                for item in self._items
-                if self._value(item, "pr_number") == pr_number
-            ),
+            (item for item in self._items if self._value(item, "pr_number") == pr_number),
             None,
         )
         state = self._enum_value(self._value(item, "state"), _WORKER_STATES)

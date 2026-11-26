@@ -36,11 +36,7 @@ def find_visual_child(root, object_name):
 def load_main_window(queue_items=None, model_ladder=None):
     application = QGuiApplication.instance() or QGuiApplication([])
     queue_items = queue_items or [make_queue_item(42)]
-    queue_pr_items = {
-        item.pr_number: item
-        for item in queue_items
-        if item.pr_number != 42
-    }
+    queue_pr_items = {item.pr_number: item for item in queue_items if item.pr_number != 42}
     service = FakeQueueService(
         items={
             42: make_status_item(),
@@ -72,9 +68,7 @@ def load_main_window(queue_items=None, model_ladder=None):
     context.setContextProperty("appStatusViewModel", status_view_model)
     context.setContextProperty("appQueueViewModel", queue_view_model)
     context.setContextProperty("appSettingsViewModel", settings_view_model)
-    context.setContextProperty(
-        "appTelemetryViewModel", TelemetryViewModel(None)
-    )
+    context.setContextProperty("appTelemetryViewModel", TelemetryViewModel(None))
     approval_view_model = CommandApprovalViewModel()
     context.setContextProperty("appCommandApprovalViewModel", approval_view_model)
     qml_path = os.path.join(
@@ -109,7 +103,9 @@ def load_main_window(queue_items=None, model_ladder=None):
 
 
 def test_pet_opens_and_closes_handscroll_panel():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
     fox_button = window.findChild(QObject, "foxPetButton")
     close_button = window.findChild(QObject, "handscrollCloseButton")
 
@@ -128,7 +124,9 @@ def test_pet_opens_and_closes_handscroll_panel():
 
 
 def test_pet_opens_handscroll_with_keyboard():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
 
     window.requestActivate()
     QTest.keyClick(window, Qt.Key.Key_Tab)
@@ -148,8 +146,8 @@ def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
     blocked.state = "blocked"
     running = make_queue_item(45)
     running.state = "running"
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window(
-        [queued, blocked, running]
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window([queued, blocked, running])
     )
     fox_button = window.findChild(QObject, "foxPetButton")
     queue_button = window.findChild(QObject, "queueTabButton")
@@ -178,7 +176,9 @@ def test_motion_preferences_keep_pet_and_controls_available(motion_preference):
 
 
 def test_status_and_queue_pages_render_textual_state():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
     status_text = window.findChild(QObject, "statusStateText")
     repository_text = window.findChild(QObject, "statusRepositoryText")
     worker_state_text = window.findChild(QObject, "workerStateText")
@@ -213,8 +213,8 @@ def test_queue_controls_are_accessible_and_update_only_after_service_refresh():
     blocked.state = "blocked"
     running = make_queue_item(45)
     running.state = "running"
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window(
-        [queued, blocked, running]
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window([queued, blocked, running])
     )
     window.findChild(QObject, "foxPetButton").click()
     window.findChild(QObject, "queueTabButton").click()
@@ -251,7 +251,9 @@ def test_queue_controls_are_accessible_and_update_only_after_service_refresh():
 
 
 def test_handscroll_exposes_settings_and_manual_feedback_controls():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -263,9 +265,7 @@ def test_handscroll_exposes_settings_and_manual_feedback_controls():
     settings_worker_gate = window.findChild(QObject, "settingsWorkerGateText")
     settings_model_input = window.findChild(QObject, "settingsModelIdInput")
     settings_model_picker = window.findChild(QObject, "settingsModelPicker")
-    settings_model_suggestion = window.findChild(
-        QObject, "settingsModelSuggestion"
-    )
+    settings_model_suggestion = window.findChild(QObject, "settingsModelSuggestion")
     settings_motion_combo = window.findChild(QObject, "settingsMotionPreference")
 
     assert feedback_input is not None
@@ -290,7 +290,9 @@ def test_handscroll_exposes_settings_and_manual_feedback_controls():
 
 
 def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -311,7 +313,9 @@ def test_feedback_can_select_a_ready_pr_outside_the_repair_queue():
 
 
 def test_handscroll_includes_local_telemetry_and_retention_controls():
-    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = load_main_window()
+    application, engine, window, status_view_model, queue_view_model, settings_view_model, *_ = (
+        load_main_window()
+    )
     window.findChild(QObject, "foxPetButton").click()
     application.processEvents()
 
@@ -329,9 +333,7 @@ def test_handscroll_includes_local_telemetry_and_retention_controls():
 
 
 def test_remote_text_components_use_plain_text_format():
-    qml_directory = (
-        Path(__file__).parents[2] / "src" / "gitkeeper" / "ui" / "qml"
-    )
+    qml_directory = Path(__file__).parents[2] / "src" / "gitkeeper" / "ui" / "qml"
 
     for component in ("PRStatusPage.qml", "QueuePage.qml"):
         source = (qml_directory / component).read_text(encoding="utf-8")
@@ -445,30 +447,19 @@ def test_command_approval_keeps_details_and_controls_without_motion(motion_prefe
 
     assert window.findChild(QObject, "commandApprovalPulse").property("visible") is False
     assert window.findChild(QObject, "commandApprovalDetails").property("visible") is True
-    assert (
-        window.findChild(QObject, "commandApprovalApproveButton").property("visible")
-        is True
-    )
-    assert (
-        window.findChild(QObject, "commandApprovalDenyButton").property("visible")
-        is True
-    )
+    assert window.findChild(QObject, "commandApprovalApproveButton").property("visible") is True
+    assert window.findChild(QObject, "commandApprovalDenyButton").property("visible") is True
     engine.deleteLater()
 
 
 def test_command_approval_details_are_read_only_plain_text():
     source = (
-        Path(__file__).parents[2]
-        / "src"
-        / "gitkeeper"
-        / "ui"
-        / "qml"
-        / "CommandApprovalDialog.qml"
+        Path(__file__).parents[2] / "src" / "gitkeeper" / "ui" / "qml" / "CommandApprovalDialog.qml"
     ).read_text(encoding="utf-8")
 
     assert "readOnly: true" in source
     assert "textFormat: TextEdit.PlainText" in source
-    assert 'Accessible.name: text' in source
+    assert "Accessible.name: text" in source
 
 
 def test_settings_handscroll_exposes_the_local_model_ladder():

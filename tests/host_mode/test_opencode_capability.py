@@ -8,6 +8,7 @@ may treat command mediation as proven.
 """
 
 import json
+import sys
 
 import pytest
 
@@ -244,6 +245,7 @@ def test_an_unverified_capability_stays_blocking_and_explains_itself():
     assert CapabilityGap.LIVE_PROBE_MISSING.value in cli_capability.unsupported_reason
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only launch environment contract.")
 def test_the_launch_environment_disables_project_configuration():
     environment = build_launch_environment(CONTROLLED_CONFIG)
     assert environment["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"

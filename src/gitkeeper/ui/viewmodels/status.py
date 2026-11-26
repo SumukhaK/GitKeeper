@@ -134,9 +134,7 @@ class StatusViewModel(QObject):
         self._error_message = None
         current_sha = self.current_sha
         if not current_sha:
-            self._feedback_error = (
-                "Refresh the pull request status before submitting feedback."
-            )
+            self._feedback_error = "Refresh the pull request status before submitting feedback."
             self.changed.emit()
             return False
         if self.ci_result != "passed":

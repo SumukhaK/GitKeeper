@@ -4,8 +4,8 @@ import pytest
 
 from gitkeeper.ui.services.config_publisher import (
     CompanionSettings,
-    ConfigPullRequest,
     ConfigPublisher,
+    ConfigPullRequest,
     InvalidSettingsError,
     validate_settings,
 )
@@ -155,13 +155,9 @@ def test_unknown_or_secret_fields_in_default_config_are_rejected():
 def test_config_status_transitions_are_read_from_the_pr():
     client = FakeConfigPRClient(make_config(), make_pull_request())
     publisher = ConfigPublisher(client)
-    client.statuses["https://github.com/SumukhaK/Setu-mobile/pull/12"] = (
-        make_pull_request("merged")
-    )
+    client.statuses["https://github.com/SumukhaK/Setu-mobile/pull/12"] = make_pull_request("merged")
 
-    status = publisher.get_config_pr_status(
-        "https://github.com/SumukhaK/Setu-mobile/pull/12"
-    )
+    status = publisher.get_config_pr_status("https://github.com/SumukhaK/Setu-mobile/pull/12")
 
     assert status.state == "merged"
     assert status.merge_status == "merged"

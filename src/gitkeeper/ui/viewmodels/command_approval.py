@@ -60,9 +60,7 @@ class CommandApprovalViewModel(QObject):
         super().__init__()
         preference = motion_preference or ""
         if preference not in _MOTION_PREFERENCES:
-            raise ValueError(
-                f"motion_preference must be one of {sorted(_MOTION_PREFERENCES)}."
-            )
+            raise ValueError(f"motion_preference must be one of {sorted(_MOTION_PREFERENCES)}.")
         self._broker_available = bool(broker_available)
         self._motion_preference = preference
         self._lock = threading.Lock()
@@ -143,9 +141,7 @@ class CommandApprovalViewModel(QObject):
     @Property(str, notify=changed)
     def accessibility_description(self) -> str:
         subject = (
-            f"{self._repository} #{self._pr_number}"
-            if self._repository
-            else "no pull request"
+            f"{self._repository} #{self._pr_number}" if self._repository else "no pull request"
         )
         digest = self._request_digest or "no request"
         return (
@@ -162,9 +158,7 @@ class CommandApprovalViewModel(QObject):
             raise ApprovalPortError("Rendered lines must be a sequence of strings.")
         rendered = tuple(lines)
         if not rendered:
-            raise ApprovalPortError(
-                "A command request must be displayed in full before review."
-            )
+            raise ApprovalPortError("A command request must be displayed in full before review.")
         for line in rendered:
             if not isinstance(line, str):
                 raise ApprovalPortError("Rendered lines must be strings.")
@@ -177,8 +171,8 @@ class CommandApprovalViewModel(QObject):
             self._request_digest = digest
             self._shown_digest = digest
             self._request_lines = list(rendered)
-            self._executable, self._purpose, self._repository, self._pr_number = (
-                _summarise(rendered, digest)
+            self._executable, self._purpose, self._repository, self._pr_number = _summarise(
+                rendered, digest
             )
             self._answer = None
             self._answer_ready.clear()
@@ -214,9 +208,7 @@ class CommandApprovalViewModel(QObject):
     def set_motion_preference(self, preference: str) -> None:
         value = preference or ""
         if value not in _MOTION_PREFERENCES:
-            raise ValueError(
-                f"motion_preference must be one of {sorted(_MOTION_PREFERENCES)}."
-            )
+            raise ValueError(f"motion_preference must be one of {sorted(_MOTION_PREFERENCES)}.")
         self._motion_preference = value
         self.changed.emit()
 
@@ -235,10 +227,7 @@ class CommandApprovalViewModel(QObject):
         with self._lock:
             if self._status != QUEUED_FOR_EXECUTION:
                 return False
-            if (
-                request_digest is not None
-                and request_digest != self._request_digest
-            ):
+            if request_digest is not None and request_digest != self._request_digest:
                 return False
             self._status = COMPLETED if result.exit_code == 0 else FAILED
             verb = "Finished" if result.exit_code == 0 else "Failed"
