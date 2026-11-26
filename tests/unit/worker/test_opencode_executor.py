@@ -1,6 +1,7 @@
 import json
 import sys
 import threading
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -333,6 +334,54 @@ def test_model_unavailable_completion_is_preserved(tmp_path) -> None:
     assert result.process_started is True
     assert result.execution.output_summary == "Worker model was unavailable."
     assert result.execution_digest
+
+
+def test_stale_approval_before_consumption_has_no_execution(tmp_path) -> None:
+    process = FakeProcess()
+    executor, job, facts, port = _executor(tmp_path, process, FakePort())
+    stale = replace(facts, head_sha="b" * 40, check_head_sha="b" * 40)
+    calls = {"count": 0}
+
+    def changing_facts() -> PullRequestFacts:
+        calls["count"] += 1
+        return facts if calls["count"] <= 2 else stale
+
+    result = executor.execute(
+        job,
+        threading.Event(),
+        approval_port=port,
+        facts=changing_facts,
+        before_start=lambda: None,
+    )
+
+    assert result.outcome is AttemptOutcome.failed
+    assert result.process_started is False
+    assert result.execution is None
+    assert result.execution_digest is None
+    assert process.starts == []
+
+
+def test_before_start_failure_after_approval_is_fixed(tmp_path) -> None:
+    process = FakeProcess()
+    executor, job, facts, port = _executor(tmp_path, process, FakePort())
+
+    def fail() -> None:
+        raise RuntimeError("secret before-start text")
+
+    result = executor.execute(
+        job,
+        threading.Event(),
+        approval_port=port,
+        facts=lambda: facts,
+        before_start=fail,
+    )
+
+    assert result.outcome is AttemptOutcome.failed
+    assert result.process_started is False
+    assert result.execution.output_summary == "Worker process did not start."
+    assert result.execution_digest
+    assert process.starts == []
+    assert "secret" not in result.execution.output_summary
 
 
 def test_process_creation_failure_after_approval_is_fixed(tmp_path) -> None:

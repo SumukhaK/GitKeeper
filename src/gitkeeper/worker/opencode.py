@@ -17,10 +17,16 @@ from uuid import uuid4
 from gitkeeper.host_mode.command_broker import (
     ApprovalBroker,
     ApprovalDecision,
+    ApprovalExpiredError,
+    ApprovalMismatchError,
+    ApprovalNotApprovedError,
     ApprovalOutcome,
     ApprovalPort,
+    ApprovalReplayError,
     CommandRequest,
     ExecutionResult,
+    StaleApprovalError,
+    UnrecognisedApprovalError,
 )
 from gitkeeper.host_mode.opencode_capability import (
     OpenCodeCapability,
@@ -464,15 +470,18 @@ class BrokerCommandExecutor:
             )
         except Exception:
             raise self._no_start_failure() from None
-        self._registry.register(
-            self._identity,
-            self._lease_id,
-            self._attempt_id,
-            handle,
-            self._cancellation,
-        )
         try:
+            self._registry.register(
+                self._identity,
+                self._lease_id,
+                self._attempt_id,
+                handle,
+                self._cancellation,
+            )
             completion = handle.wait()
+        except BaseException:
+            handle.terminate()
+            raise
         finally:
             self._registry.unregister(
                 self._identity, self._lease_id, self._attempt_id
@@ -690,6 +699,20 @@ class OpenCodeExecutor:
                 execution = approval_broker.execute_approved(
                     top_request, decision
                 )
+            except (
+                UnrecognisedApprovalError,
+                ApprovalMismatchError,
+                ApprovalNotApprovedError,
+                ApprovalReplayError,
+                ApprovalExpiredError,
+                StaleApprovalError,
+            ):
+                return WorkerResult(
+                    outcome=AttemptOutcome.failed,
+                    model_id=job.model_id,
+                    error=None,
+                    process_started=False,
+                )
             except WorkerProcessFailure as failure:
                 outcome = failure.completion.outcome
                 error = (
@@ -725,5 +748,11 @@ class OpenCodeExecutor:
                 execution_digest=decision.request_digest,
             )
         finally:
-            bridge.stop()
-            self._registry.unregister(identity, lease_id, attempt_id)
+            try:
+                bridge.stop()
+            finally:
+                self._registry.unregister(identity, lease_id, attempt_id)
+                try:
+                    token_directory.rmdir()
+                except OSError:
+                    pass
