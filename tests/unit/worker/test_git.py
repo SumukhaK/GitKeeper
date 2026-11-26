@@ -40,6 +40,9 @@ def _remote(tmp_path: Path) -> tuple[Path, Path, str]:
     _git("config", "user.email", "test@example.com", cwd=work)
     _git("config", "user.name", "Test", cwd=work)
     (work / "file.txt").write_bytes(b"hello\n")
+    (work / "space name.txt").write_bytes(b"space\n")
+    (work / "caf\u00e9.txt").write_bytes(b"unicode\n")
+    (work / "plus.txt").write_bytes(b"base\n")
     _git("add", ".", cwd=work)
     _git("commit", "-m", "initial", cwd=work)
     sha = _git("rev-parse", "HEAD", cwd=work)
@@ -459,3 +462,23 @@ def test_inspect_changes_with_no_changes(tmp_path) -> None:
 
     assert changes == ()
     assert unstaged is False
+
+def test_inspect_changes_handles_spaces_unicode_and_plus_lines(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "space name.txt").write_bytes(b"space\nbad secret\n")
+    (worktree / "caf\u00e9.txt").write_bytes(b"unicode\nchanged\n")
+    (worktree / "plus.txt").write_bytes(b"base\n+++ added header-like line\n")
+    (worktree / "new caf\u00e9.txt").write_bytes(b"new file\n")
+
+    changes, _ = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+    by_path = {change.path: change for change in changes}
+
+    assert by_path["space name.txt"].added_text == "bad secret\n"
+    assert by_path["caf\u00e9.txt"].added_text == "changed\n"
+    assert by_path["plus.txt"].added_text == "+++ added header-like line\n"
+    assert by_path["new caf\u00e9.txt"].added_text == "new file\n"

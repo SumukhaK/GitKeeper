@@ -437,3 +437,40 @@ def test_policy_thresholds_are_code_constants_not_configurable_inputs():
     assert (policy.MAX_FILES, policy.MAX_TOTAL_LINES, policy.MAX_FILE_LINES) == (10, 400, 150)
     with pytest.raises(TypeError):
         PatchScopePolicy(max_files=100)
+
+
+def test_fork_head_repository_is_rejected(roots):
+    remote = RemotePrState(
+        number=19,
+        repository="SumukhaK/Setu-mobile",
+        author="SumukhaK",
+        head_sha=STARTING_SHA,
+        is_open=True,
+        is_draft=False,
+        head_repository="someone/Setu-mobile",
+    )
+
+    decision = PatchScopePolicy().evaluate(
+        request(roots, minimal_changes(), remote=remote)
+    )
+
+    assert ScopeReason.PR_NOT_ELIGIBLE in codes(decision)
+
+
+def test_same_or_unknown_head_repository_is_not_a_fork(roots):
+    for head_repository in ("SumukhaK/Setu-mobile", None):
+        remote = RemotePrState(
+            number=19,
+            repository="SumukhaK/Setu-mobile",
+            author="SumukhaK",
+            head_sha=STARTING_SHA,
+            is_open=True,
+            is_draft=False,
+            head_repository=head_repository,
+        )
+
+        decision = PatchScopePolicy().evaluate(
+            request(roots, minimal_changes(), remote=remote)
+        )
+
+        assert ScopeReason.PR_NOT_ELIGIBLE not in codes(decision)

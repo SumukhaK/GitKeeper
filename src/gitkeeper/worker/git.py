@@ -7,6 +7,7 @@ Errors never include Git output, URLs with userinfo, or credentials.
 
 from __future__ import annotations
 
+import codecs
 import os
 import re
 import stat
@@ -175,6 +176,17 @@ def _validated_cache_root(
     return cache_root
 
 
+def _unquote_path(value: str) -> str:
+    if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+        try:
+            return codecs.escape_decode(value[1:-1].encode("utf-8"))[0].decode(
+                "utf-8", "replace"
+            )
+        except (ValueError, UnicodeDecodeError):
+            return value[1:-1]
+    return value
+
+
 def _parse_status(output: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     dirty: list[str] = []
     untracked: list[str] = []
@@ -292,6 +304,8 @@ class GitCliTransport:
                 env=self._environment(),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout or self._timeout,
             )
         except (OSError, subprocess.TimeoutExpired, ValueError):
@@ -699,11 +713,14 @@ class GitCliTransport:
     def _added_text(self, path: Path, revision: str) -> dict[str, str]:
         output = self._run(
             [
+                "-c",
+                "core.quotePath=false",
                 "diff",
                 "-U0",
                 "--no-color",
                 "--no-ext-diff",
                 "--no-renames",
+                "--no-prefix",
                 revision,
                 "--",
             ],
@@ -711,15 +728,22 @@ class GitCliTransport:
         ).stdout
         result: dict[str, str] = {}
         current: str | None = None
+        in_hunk = False
         for line in output.splitlines():
-            if line.startswith("+++ b/"):
-                current = line[6:]
-                result.setdefault(current, "")
-            elif line.startswith("+++ /dev/null"):
+            if line.startswith("diff --git "):
                 current = None
-            elif current is not None and line.startswith("+") and not line.startswith(
-                "+++"
-            ):
+                in_hunk = False
+            elif line.startswith("+++ "):
+                target = line[4:]
+                if target == "/dev/null":
+                    current = None
+                else:
+                    current = _unquote_path(target.rstrip("\t"))
+                    result.setdefault(current, "")
+                in_hunk = False
+            elif line.startswith("@@"):
+                in_hunk = current is not None
+            elif in_hunk and line.startswith("+"):
                 result[current] += line[1:] + "\n"
         return result
 
