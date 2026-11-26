@@ -28,6 +28,6 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Check UI formatting
-        run: ruff format --check src/gitkeeper/ui tests/ui
+        run: ruff format --check src/gitkeeper/relay tests/relay src/gitkeeper/ui tests/ui
       - name: Test
         run: pytest -q
