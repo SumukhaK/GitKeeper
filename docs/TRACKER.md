@@ -11,7 +11,7 @@ This file only changes when the plan changes.
 
 1. Pick the lowest-numbered open issue whose dependencies are all closed
    ([open relay-v1 issues](https://github.com/SumukhaK/GitKeeper/issues?q=is%3Aopen+label%3Arelay-v1)).
-2. Copy the issue's **Worker prompt** section into OpenCode or Copilot.
+2. Paste the "Start a task" prompt from [`worker-prompts.md`](worker-prompts.md) with the issue number into OpenCode or Copilot.
 3. The worker opens one PR and stops. Review it with Claude (`prompts/review.md` after R1),
    send changes back with `prompts/changes.md`, merge when approved.
 
