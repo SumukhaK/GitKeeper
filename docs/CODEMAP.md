@@ -23,6 +23,7 @@
 - `src/gitkeeper/queue/telemetry.py`: `class TelemetryStore`
 - `src/gitkeeper/relay/__init__.py`
 - `src/gitkeeper/relay/packet.py`: `class PacketPr`, `class PacketIssue`, `def build_review_packet`
+- `src/gitkeeper/relay/prompts.py`: `class CiFailure`, `def changes_prompt`, `def ci_fix_prompt`, `def task_prompt`
 - `src/gitkeeper/relay/state.py`: `class Phase`, `class PrRecord`, `class PrFacts`, `def advance`, `def packet_copied`, `def verdict_recorded`, `def owner_reset`
 - `src/gitkeeper/relay/verdict.py`: `class Verdict`, `class VerdictError`, `def parse_verdict`
 - `src/gitkeeper/ui/__init__.py`
