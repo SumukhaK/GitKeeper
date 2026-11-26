@@ -5,6 +5,8 @@ import pytest
 
 from gitkeeper.worker.git import (
     GitCliTransport,
+    GitPushOutcomeUnknown,
+    GitPushRejected,
     GitTransportError,
     _parse_status,
     validate_clone_url,
@@ -271,3 +273,112 @@ def test_parse_status_splits_dirty_and_untracked() -> None:
         ("a.txt",),
         ("new.txt",),
     )
+
+
+def test_stage_commit_and_ancestry(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"changed\n")
+
+    transport.stage(worktree, ("file.txt",))
+    commit_sha = transport.commit(worktree, "Repair the test")
+
+    assert commit_sha != sha
+    assert transport.head(worktree) == commit_sha
+    assert transport.is_ancestor(worktree, sha, commit_sha)
+    assert not transport.is_ancestor(worktree, commit_sha, sha)
+    assert transport.commit_count(worktree, sha, commit_sha) == 1
+    assert (
+        _git("log", "-1", "--format=%an <%ae>", cwd=worktree)
+        == "GitKeeper Worker <gitkeeper@localhost>"
+    )
+
+
+def test_stage_rejects_absolute_or_parent_paths(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+
+    with pytest.raises(ValueError):
+        transport.stage(worktree, ("../outside.txt",))
+    with pytest.raises(ValueError):
+        transport.stage(worktree, (str(tmp_path / "absolute.txt"),))
+
+
+def test_commit_rejects_multiline_messages(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+
+    with pytest.raises(ValueError):
+        transport.commit(worktree, "line one\nline two")
+
+
+def test_push_updates_the_remote_branch(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"changed\n")
+    transport.stage(worktree, ("file.txt",))
+    commit_sha = transport.commit(worktree, "Repair the test")
+
+    transport.push(worktree, "repair/test", commit_sha)
+
+    assert transport.remote_head(_REPOSITORY, "repair/test") == commit_sha
+
+
+def test_push_rejects_default_and_invalid_branches(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+
+    for branch in ("main", "master", "HEAD", "@", "refs/heads/x", "-x", "a..b", "a b"):
+        with pytest.raises(ValueError):
+            transport.push(tmp_path, branch, sha)
+
+
+def test_non_fast_forward_push_is_rejected(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    first = tmp_path / "managed" / "first"
+    second = tmp_path / "managed" / "second"
+    transport.add_detached(first, sha)
+    transport.add_detached(second, sha)
+
+    (first / "file.txt").write_bytes(b"first\n")
+    transport.stage(first, ("file.txt",))
+    first_commit = transport.commit(first, "First repair")
+    transport.push(first, "repair/test", first_commit)
+
+    (second / "file.txt").write_bytes(b"second\n")
+    transport.stage(second, ("file.txt",))
+    second_commit = transport.commit(second, "Divergent repair")
+
+    with pytest.raises(GitPushRejected):
+        transport.push(second, "repair/test", second_commit)
+
+
+def test_push_timeout_is_unknown(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+
+    def timing_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 1)
+
+    transport, _ = _transport(tmp_path, work, remote, runner=timing_out)
+
+    with pytest.raises(GitPushOutcomeUnknown):
+        transport.push(tmp_path, "repair/test", sha)
+
+
+def test_remote_head_missing_branch_and_other_repository(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+
+    with pytest.raises(GitTransportError):
+        transport.remote_head(_REPOSITORY, "repair/missing")
+    with pytest.raises(ValueError):
+        transport.remote_head("Other/Repo", "repair/test")

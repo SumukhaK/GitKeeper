@@ -37,6 +37,14 @@ class GitTransportError(WorktreeError):
     """A trusted Git operation failed without exposing output or secrets."""
 
 
+class GitPushRejected(WorktreeError):
+    """A proven non-fast-forward or forbidden push."""
+
+
+class GitPushOutcomeUnknown(WorktreeError):
+    """A push that may have been sent but cannot be confirmed."""
+
+
 def _invalid(field: str) -> ValueError:
     return ValueError(f"Invalid {field}.")
 
@@ -44,6 +52,23 @@ def _invalid(field: str) -> ValueError:
 def _sha(value: object) -> str:
     if not isinstance(value, str) or _SHA_PATTERN.fullmatch(value) is None:
         raise _invalid("head_sha")
+    return value
+
+
+def _branch(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise _invalid("branch")
+    if value in {"HEAD", "@", "main", "master"} or value.startswith("refs/"):
+        raise _invalid("branch")
+    if value.startswith(("-", "/", ".")) or value.endswith(("/", ".lock", ".")):
+        raise _invalid("branch")
+    if (
+        ".." in value
+        or "//" in value
+        or any(character in value for character in "~^:?*[\\")
+        or any(ord(character) < 32 or character.isspace() for character in value)
+    ):
+        raise _invalid("branch")
     return value
 
 
@@ -413,3 +438,128 @@ class GitCliTransport:
                 )
             )
         return tuple(snapshots)
+
+    def stage(self, path: Path, paths: tuple[str, ...]) -> None:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        if not isinstance(paths, tuple) or not paths:
+            raise _invalid("paths")
+        for item in paths:
+            if not isinstance(item, str) or not item:
+                raise _invalid("paths")
+            if any(character in item for character in "\r\n\x00"):
+                raise _invalid("paths")
+            candidate = Path(item)
+            if candidate.is_absolute() or ".." in candidate.parts:
+                raise _invalid("paths")
+        self._run(["add", "--", *paths], cwd=path)
+
+    def commit(self, path: Path, message: str) -> str:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        if not isinstance(message, str) or not message.strip():
+            raise _invalid("message")
+        if any(character in message for character in "\r\n\x00"):
+            raise _invalid("message")
+        self._run(
+            [
+                "-c",
+                "user.name=GitKeeper Worker",
+                "-c",
+                "user.email=gitkeeper@localhost",
+                "commit",
+                "-m",
+                message,
+            ],
+            cwd=path,
+        )
+        value = self._run(["rev-parse", "HEAD"], cwd=path).stdout.strip()
+        if _SHA_PATTERN.fullmatch(value) is None:
+            raise GitTransportError("Git returned an invalid commit SHA.")
+        return value
+
+    def is_ancestor(self, path: Path, older: str, newer: str) -> bool:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        result = self._run(
+            ["merge-base", "--is-ancestor", _sha(older), _sha(newer)],
+            cwd=path,
+            check=False,
+        )
+        if result.returncode == 0:
+            return True
+        if result.returncode == 1:
+            return False
+        raise GitTransportError("Git could not compare the two commits.")
+
+    def commit_count(self, path: Path, older: str, newer: str) -> int:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        output = self._run(
+            ["rev-list", "--count", f"{_sha(older)}..{_sha(newer)}"],
+            cwd=path,
+        ).stdout.strip()
+        try:
+            count = int(output)
+        except ValueError:
+            raise GitTransportError("Git returned an invalid commit count.") from None
+        if count < 0:
+            raise GitTransportError("Git returned an invalid commit count.")
+        return count
+
+    def push(self, path: Path, branch: str, commit_sha: str) -> None:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        target = _branch(branch)
+        sha = _sha(commit_sha)
+        command = [
+            self._git,
+            *self._config_arguments(),
+            "push",
+            "--porcelain",
+            "origin",
+            f"{sha}:refs/heads/{target}",
+        ]
+        try:
+            result = self._runner(
+                command,
+                cwd=str(path),
+                env=self._environment(),
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            raise GitPushOutcomeUnknown("The push outcome is unknown.") from None
+        if result.returncode == 0:
+            return
+        text = f"{result.stdout}\n{result.stderr}".casefold()
+        if any(
+            marker in text
+            for marker in (
+                "non-fast-forward",
+                "fetch first",
+                "rejected",
+                "protected branch",
+                "permission denied",
+                "policy",
+            )
+        ):
+            raise GitPushRejected("The push was rejected.")
+        raise GitPushOutcomeUnknown("The push outcome is unknown.")
+
+    def remote_head(self, repository: str, branch: str) -> str:
+        if repository != self._repository:
+            raise ValueError("repository does not match the bound repository.")
+        target = _branch(branch)
+        cache = self.prepare(repository)
+        output = self._run(
+            ["ls-remote", "--heads", "origin", f"refs/heads/{target}"],
+            cwd=cache,
+        ).stdout.strip()
+        if not output:
+            raise GitTransportError("The remote branch does not exist.")
+        parts = output.split()
+        if len(parts) < 2 or _SHA_PATTERN.fullmatch(parts[0]) is None:
+            raise GitTransportError("Git returned an invalid remote head.")
+        return parts[0]
