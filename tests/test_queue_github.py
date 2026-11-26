@@ -9,7 +9,6 @@ network access.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 from datetime import datetime, timezone
@@ -117,10 +116,6 @@ def _client(*results, token=TOKEN, timeout_seconds=20.0):
         timeout_seconds=timeout_seconds,
     )
     return client, opener
-
-
-def _run(coroutine):
-    return asyncio.run(coroutine)
 
 
 def _pull(
@@ -234,7 +229,7 @@ def test_missing_or_blank_token_is_authorization_failure(token):
     client, opener = _client(_Response([]), token=token)
 
     with pytest.raises(GitHubAuthorizationError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert str(info.value) == AUTHORIZATION_MESSAGE
     assert info.value.args == (AUTHORIZATION_MESSAGE,)
@@ -244,7 +239,7 @@ def test_missing_or_blank_token_is_authorization_failure(token):
 def test_surrounding_token_whitespace_is_trimmed():
     client, opener = _client(_Response([]), token=f"  {TOKEN}\n")
 
-    _run(client.list_open_pull_requests(REPOSITORY))
+    client.list_open_pull_requests(REPOSITORY)
 
     headers = {
         key.lower(): value
@@ -256,7 +251,7 @@ def test_surrounding_token_whitespace_is_trimmed():
 def test_requests_carry_fixed_headers_and_timeout():
     client, opener = _client(_Response([]), timeout_seconds=7.5)
 
-    _run(client.list_open_pull_requests(REPOSITORY))
+    client.list_open_pull_requests(REPOSITORY)
 
     (call,) = opener.calls
     assert call["url"] == (
@@ -277,7 +272,7 @@ def test_requests_carry_fixed_headers_and_timeout():
 def test_default_timeout_is_twenty_seconds():
     client, opener = _client(_Response([]))
 
-    _run(client.list_open_pull_requests(REPOSITORY))
+    client.list_open_pull_requests(REPOSITORY)
 
     assert opener.calls[0]["timeout"] == 20.0
 
@@ -285,7 +280,7 @@ def test_default_timeout_is_twenty_seconds():
 def test_plain_response_without_context_manager_is_supported():
     client, _ = _client(_PlainResponse([_pull(PR_NUMBER)]))
 
-    snapshots = _run(client.list_open_pull_requests(REPOSITORY))
+    snapshots = client.list_open_pull_requests(REPOSITORY)
 
     assert [snapshot.pr_number for snapshot in snapshots] == [PR_NUMBER]
 
@@ -308,7 +303,7 @@ def test_list_open_pull_requests_maps_fields_and_follows_next_links():
         _Response(second_page),
     )
 
-    snapshots = _run(client.list_open_pull_requests(REPOSITORY))
+    snapshots = client.list_open_pull_requests(REPOSITORY)
 
     assert [snapshot.pr_number for snapshot in snapshots] == [
         PR_NUMBER,
@@ -349,7 +344,7 @@ def test_list_observation_time_is_captured_before_each_page_request():
         _Response([_pull(3)]),
     )
 
-    snapshots = _run(client.list_open_pull_requests(REPOSITORY))
+    snapshots = client.list_open_pull_requests(REPOSITORY)
 
     assert snapshots[0].observed_at == snapshots[1].observed_at
     assert snapshots[0].observed_at <= opener.calls[0]["called_at"]
@@ -372,7 +367,7 @@ def test_list_rejects_malformed_pages(page):
     client, _ = _client(_Response(page))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert str(info.value) == RESPONSE_MESSAGE
 
@@ -383,7 +378,7 @@ def test_list_rejects_non_boolean_draft():
     client, _ = _client(_Response([item]))
 
     with pytest.raises(GitHubResponseError):
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
 
 # --- single pull request -------------------------------------------------
@@ -392,7 +387,7 @@ def test_list_rejects_non_boolean_draft():
 def test_get_pull_request_maps_single_pull_request_facts():
     client, opener = _client(_Response(_pull(PR_NUMBER, draft=True)))
 
-    snapshot = _run(client.get_pull_request(REPOSITORY, PR_NUMBER))
+    snapshot = client.get_pull_request(REPOSITORY, PR_NUMBER)
 
     assert opener.calls[0]["url"] == (
         f"{API}/repos/{REPOSITORY}/pulls/{PR_NUMBER}"
@@ -417,7 +412,7 @@ def test_get_pull_request_maps_absent_nested_fields_to_none():
         )
     )
 
-    snapshot = _run(client.get_pull_request(REPOSITORY, PR_NUMBER))
+    snapshot = client.get_pull_request(REPOSITORY, PR_NUMBER)
 
     assert snapshot.author is None
     assert snapshot.head_repository is None
@@ -430,7 +425,7 @@ def test_single_pull_request_404_is_not_found():
     )
 
     with pytest.raises(PullRequestNotFound) as info:
-        _run(client.get_pull_request(REPOSITORY, PR_NUMBER))
+        client.get_pull_request(REPOSITORY, PR_NUMBER)
 
     assert type(info.value) is PullRequestNotFound
     assert isinstance(info.value, GitHubResponseError)
@@ -441,7 +436,7 @@ def test_list_404_is_response_error():
     client, _ = _client(_http_error(404))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert type(info.value) is GitHubResponseError
     assert str(info.value) == RESPONSE_MESSAGE
@@ -451,10 +446,8 @@ def test_check_state_404_is_response_error():
     client, _ = _client(_http_error(404, url=_checks_url()))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(
-            client.get_check_state(
-                REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-            )
+        client.get_check_state(
+            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
         )
 
     assert type(info.value) is GitHubResponseError
@@ -465,7 +458,7 @@ def test_config_404_is_response_error():
     client, _ = _client(_http_error(404, url=f"{API}/repos/{REPOSITORY}"))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_default_branch_config(REPOSITORY))
+        client.get_default_branch_config(REPOSITORY)
 
     assert type(info.value) is GitHubResponseError
     assert str(info.value) == RESPONSE_MESSAGE
@@ -481,10 +474,8 @@ def test_check_suite_404_is_response_error():
     )
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(
-            client.get_check_state(
-                REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-            )
+        client.get_check_state(
+            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
         )
 
     assert type(info.value) is GitHubResponseError
@@ -501,7 +492,7 @@ def test_invalid_arguments_are_rejected_before_any_request(
     client, opener = _client(_Response(_pull(PR_NUMBER)))
 
     with pytest.raises(GitHubResponseError):
-        _run(client.get_pull_request(repository, pr_number))
+        client.get_pull_request(repository, pr_number)
 
     assert opener.calls == []
 
@@ -525,7 +516,7 @@ def test_http_status_translation(status, error_type, message):
     client, _ = _client(_http_error(status))
 
     with pytest.raises(error_type) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert type(info.value) is error_type
     assert str(info.value) == message
@@ -543,7 +534,7 @@ def test_network_failures_are_unavailable(error):
     client, _ = _client(error)
 
     with pytest.raises(GitHubUnavailable) as info:
-        _run(client.get_pull_request(REPOSITORY, PR_NUMBER))
+        client.get_pull_request(REPOSITORY, PR_NUMBER)
 
     assert str(info.value) == UNAVAILABLE_MESSAGE
     assert info.value.args == (UNAVAILABLE_MESSAGE,)
@@ -561,7 +552,7 @@ def test_malformed_json_is_response_error(body):
     client, _ = _client(_Response(body))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert str(info.value) == RESPONSE_MESSAGE
 
@@ -579,9 +570,7 @@ def test_check_state_maps_success_and_failure_for_current_head():
         )
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
 
     assert [call["url"] for call in opener.calls] == [_checks_url()]
     assert state.head_sha == HEAD_SHA
@@ -599,9 +588,7 @@ def test_check_state_maps_success_and_failure_for_current_head():
 def test_missing_required_check_stays_unknown():
     client, _ = _client(_Response(_check_page(_check_run(REQUIRED[0]))))
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
 
     assert [result.check_id for result in state.results] == [REQUIRED[0]]
     assert state.outcome is CheckOutcome.unknown
@@ -617,9 +604,7 @@ def test_duplicate_current_head_results_stay_unknown():
         )
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
 
     assert len(state.results) == 2
     assert state.outcome is CheckOutcome.unknown
@@ -634,9 +619,7 @@ def test_stale_check_evidence_is_not_success():
         )
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
 
     assert state.results[0].conclusion is CheckConclusion.stale
     assert state.results[0].head_sha == OTHER_SHA
@@ -652,9 +635,7 @@ def test_non_deterministic_conclusions_map_verbatim(conclusion):
         _Response(_check_page(_check_run(REQUIRED[0], conclusion=conclusion)))
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
 
     assert state.results[0].conclusion is CheckConclusion(conclusion)
     assert len(opener.calls) == 1
@@ -671,9 +652,7 @@ def test_undetermined_conclusion_uses_suite_failure_and_caches_suite():
         _Response({"id": SUITE_ID, "conclusion": "failure"}),
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
 
     assert [result.conclusion for result in state.results] == [
         CheckConclusion.startup_failure,
@@ -692,9 +671,7 @@ def test_undetermined_conclusion_without_suite_failure_is_not_deterministic():
         _Response({"id": SUITE_ID, "conclusion": "neutral"}),
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],))
 
     assert state.results[0].conclusion is CheckConclusion.action_required
     assert state.outcome is CheckOutcome.blocked
@@ -706,10 +683,8 @@ def test_undetermined_conclusion_requires_a_linked_suite():
     client, opener = _client(_Response(_check_page(run)))
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.get_check_state(
-                REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-            )
+        client.get_check_state(
+            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
         )
 
     assert len(opener.calls) == 1
@@ -730,9 +705,7 @@ def test_check_state_follows_next_links():
         ),
     )
 
-    state = _run(
-        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
-    )
+    state = client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
 
     assert [result.check_id for result in state.results] == list(REQUIRED)
     assert [call["url"] for call in opener.calls] == [_checks_url(), next_url]
@@ -752,10 +725,8 @@ def test_check_state_rejects_malformed_pages(page):
     client, _ = _client(_Response(page))
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.get_check_state(
-                REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-            )
+        client.get_check_state(
+            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
         )
 
 
@@ -766,10 +737,8 @@ def test_check_state_rejects_bad_run_ids(run_id):
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.get_check_state(
-                REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-            )
+        client.get_check_state(
+            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
         )
 
 
@@ -784,9 +753,7 @@ def test_check_state_rejects_duplicate_run_ids():
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
-        )
+        client.get_check_state(REPOSITORY, PR_NUMBER, HEAD_SHA, REQUIRED)
 
 
 # --- default branch configuration ---------------------------------------
@@ -804,7 +771,7 @@ def test_default_branch_config_resolves_metadata_ref_and_contents():
         _Response(_contents_payload(_config_payload())),
     )
 
-    config = _run(client.get_default_branch_config(REPOSITORY))
+    config = client.get_default_branch_config(REPOSITORY)
 
     assert isinstance(config, PilotConfig)
     assert config.worker_enabled is True
@@ -830,7 +797,7 @@ def test_default_branch_config_uses_commit_sha_not_blob_sha():
         _Response(_contents_payload(_config_payload())),
     )
 
-    config = _run(client.get_default_branch_config(REPOSITORY))
+    config = client.get_default_branch_config(REPOSITORY)
 
     assert config.default_branch_sha == COMMIT_SHA
     assert config.default_branch_sha != BLOB_SHA
@@ -845,7 +812,7 @@ def test_default_branch_ref_quotes_nested_branch_name():
         _Response(_contents_payload(_config_payload())),
     )
 
-    config = _run(client.get_default_branch_config(REPOSITORY))
+    config = client.get_default_branch_config(REPOSITORY)
 
     assert config.default_branch == branch
     assert opener.calls[1]["url"] == (
@@ -866,7 +833,7 @@ def test_default_branch_config_decodes_wrapped_base64_content():
         _Response(_contents_payload(None, content=wrapped)),
     )
 
-    config = _run(client.get_default_branch_config(REPOSITORY))
+    config = client.get_default_branch_config(REPOSITORY)
 
     assert config.deterministic_check_ids == ("ci/lint", "ci/test")
 
@@ -885,7 +852,7 @@ def test_config_rejects_missing_default_branch(metadata):
     client, _ = _client(_Response(metadata))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_default_branch_config(REPOSITORY))
+        client.get_default_branch_config(REPOSITORY)
 
     assert str(info.value) == RESPONSE_MESSAGE
 
@@ -908,7 +875,7 @@ def test_config_rejects_invalid_ref_payload(ref_payload):
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(client.get_default_branch_config(REPOSITORY))
+        client.get_default_branch_config(REPOSITORY)
 
 
 @pytest.mark.parametrize(
@@ -931,7 +898,7 @@ def test_config_rejects_invalid_contents(contents):
     )
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_default_branch_config(REPOSITORY))
+        client.get_default_branch_config(REPOSITORY)
 
     assert str(info.value) == RESPONSE_MESSAGE
 
@@ -955,7 +922,7 @@ def test_invalid_config_is_response_error_without_details(payload):
     )
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_default_branch_config(REPOSITORY))
+        client.get_default_branch_config(REPOSITORY)
 
     assert str(info.value) == RESPONSE_MESSAGE
     assert "worker_enabled" not in str(info.value)
@@ -970,7 +937,7 @@ def test_response_errors_never_leak_token_url_body_or_headers():
     client, _ = _client(_Response(body))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     error = info.value
     assert str(error) == RESPONSE_MESSAGE
@@ -990,7 +957,7 @@ def test_authorization_errors_never_leak_http_details():
     )
 
     with pytest.raises(GitHubAuthorizationError) as info:
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     representation = repr(info.value)
     assert str(info.value) == AUTHORIZATION_MESSAGE
@@ -1001,20 +968,18 @@ def test_authorization_errors_never_leak_http_details():
 
 def test_each_operation_issues_one_request_per_endpoint():
     list_client, list_opener = _client(_Response([]))
-    _run(list_client.list_open_pull_requests(REPOSITORY))
+    list_client.list_open_pull_requests(REPOSITORY)
     assert len(list_opener.calls) == 1
 
     pull_client, pull_opener = _client(_Response(_pull(PR_NUMBER)))
-    _run(pull_client.get_pull_request(REPOSITORY, PR_NUMBER))
+    pull_client.get_pull_request(REPOSITORY, PR_NUMBER)
     assert len(pull_opener.calls) == 1
 
     checks_client, checks_opener = _client(
         _Response(_check_page(_check_run(REQUIRED[0])))
     )
-    _run(
-        checks_client.get_check_state(
-            REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
-        )
+    checks_client.get_check_state(
+        REPOSITORY, PR_NUMBER, HEAD_SHA, (REQUIRED[0],)
     )
     assert len(checks_opener.calls) == 1
 
@@ -1023,7 +988,7 @@ def test_each_operation_issues_one_request_per_endpoint():
         _Response({"object": {"type": "commit", "sha": COMMIT_SHA}}),
         _Response(_contents_payload(_config_payload())),
     )
-    _run(config_client.get_default_branch_config(REPOSITORY))
+    config_client.get_default_branch_config(REPOSITORY)
     assert len(config_opener.calls) == 3
 
 
@@ -1031,7 +996,7 @@ def test_failures_are_not_retried():
     client, opener = _client(_http_error(500), _Response([]))
 
     with pytest.raises(GitHubUnavailable):
-        _run(client.list_open_pull_requests(REPOSITORY))
+        client.list_open_pull_requests(REPOSITORY)
 
     assert len(opener.calls) == 1
 
@@ -1066,7 +1031,7 @@ def test_get_worker_labels_filters_exact_names_and_preserves_order():
         )
     )
 
-    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+    labels = client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
     assert labels == (WorkerLabel.queued, WorkerLabel.running)
     assert [call["url"] for call in opener.calls] == [_labels_url()]
@@ -1085,7 +1050,7 @@ def test_get_worker_labels_follows_next_links():
         _Response([_label(LABEL_QUEUED)]),
     )
 
-    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+    labels = client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
     assert labels == (WorkerLabel.blocked, WorkerLabel.queued)
     assert [call["url"] for call in opener.calls] == [
@@ -1099,7 +1064,7 @@ def test_get_worker_labels_ignores_unrelated_label_url_shapes():
         _Response([{"name": UNRELATED_LABEL}, _label(LABEL_QUEUED)])
     )
 
-    labels = _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+    labels = client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
     assert labels == (WorkerLabel.queued,)
 
@@ -1120,7 +1085,7 @@ def test_get_worker_labels_rejects_malformed_label_objects(payload):
     client, opener = _client(_Response(payload))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+        client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
     assert str(info.value) == RESPONSE_MESSAGE
     assert len(opener.calls) == 1
@@ -1140,14 +1105,14 @@ def test_get_worker_labels_rejects_duplicates_across_pages():
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+        client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
 
 def test_get_worker_labels_404_is_response_error_not_missing_pull_request():
     client, _ = _client(_http_error(404, url=_labels_url()))
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(client.get_worker_labels(REPOSITORY, PR_NUMBER))
+        client.get_worker_labels(REPOSITORY, PR_NUMBER)
 
     assert not isinstance(info.value, PullRequestNotFound)
 
@@ -1171,15 +1136,13 @@ def test_worker_label_arguments_are_validated_before_any_request(
 ):
     read_client, read_opener = _client(_Response([]))
     with pytest.raises(GitHubResponseError):
-        _run(read_client.get_worker_labels(repository, pr_number))
+        read_client.get_worker_labels(repository, pr_number)
     assert read_opener.calls == []
 
     set_client, set_opener = _client(_Response([]))
     with pytest.raises(GitHubResponseError):
-        _run(
-            set_client.set_worker_label(
-                repository, pr_number, WorkerLabel.queued
-            )
+        set_client.set_worker_label(
+            repository, pr_number, WorkerLabel.queued
         )
     assert set_opener.calls == []
 
@@ -1188,9 +1151,7 @@ def test_set_worker_label_rejects_untyped_label_before_any_request():
     client, opener = _client(_Response([]))
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.set_worker_label(REPOSITORY, PR_NUMBER, LABEL_QUEUED)
-        )
+        client.set_worker_label(REPOSITORY, PR_NUMBER, LABEL_QUEUED)
 
     assert opener.calls == []
 
@@ -1203,9 +1164,7 @@ def test_set_worker_label_converges_from_conflicting_label():
         _Response([_label(LABEL_QUEUED)]),
     )
 
-    result = _run(
-        client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued)
-    )
+    result = client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued)
 
     assert result is None
     assert [call["request"].get_method() for call in opener.calls] == [
@@ -1258,7 +1217,7 @@ def test_set_worker_label_deletes_per_pr_assignment_not_definition():
         _Response([]),
     )
 
-    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+    client.set_worker_label(REPOSITORY, PR_NUMBER, None)
 
     assert opener.calls[1]["request"].get_method() == "DELETE"
     assert opener.calls[1]["url"] == _delete_label_url(LABEL_BLOCKED)
@@ -1275,7 +1234,7 @@ def test_set_worker_label_clears_to_no_label_without_posting():
         _Response([]),
     )
 
-    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+    client.set_worker_label(REPOSITORY, PR_NUMBER, None)
 
     assert [call["request"].get_method() for call in opener.calls] == [
         "GET",
@@ -1292,15 +1251,13 @@ def test_set_worker_label_is_a_noop_when_already_converged():
     matching_client, matching_opener = _client(
         _Response([_label(LABEL_QUEUED)])
     )
-    _run(
-        matching_client.set_worker_label(
-            REPOSITORY, PR_NUMBER, WorkerLabel.queued
-        )
+    matching_client.set_worker_label(
+        REPOSITORY, PR_NUMBER, WorkerLabel.queued
     )
     assert len(matching_opener.calls) == 1
 
     empty_client, empty_opener = _client(_Response([]))
-    _run(empty_client.set_worker_label(REPOSITORY, PR_NUMBER, None))
+    empty_client.set_worker_label(REPOSITORY, PR_NUMBER, None)
     assert len(empty_opener.calls) == 1
 
 
@@ -1310,10 +1267,8 @@ def test_set_worker_label_rejects_multiple_current_labels_before_mutation():
     )
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert str(info.value) == RESPONSE_MESSAGE
@@ -1324,10 +1279,8 @@ def test_set_worker_label_initial_read_failure_issues_no_mutation():
     client, opener = _client(_http_error(404, url=_labels_url()))
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert [call["request"].get_method() for call in opener.calls] == ["GET"]
@@ -1340,10 +1293,8 @@ def test_set_worker_label_delete_failure_stops_before_posting():
     )
 
     with pytest.raises(GitHubUnavailable):
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert [call["request"].get_method() for call in opener.calls] == [
@@ -1360,10 +1311,8 @@ def test_set_worker_label_post_failure_raises():
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert [call["request"].get_method() for call in opener.calls] == [
@@ -1382,10 +1331,8 @@ def test_set_worker_label_final_read_failure_is_not_success():
     )
 
     with pytest.raises(GitHubUnavailable):
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert [call["request"].get_method() for call in opener.calls] == [
@@ -1405,10 +1352,8 @@ def test_set_worker_label_final_read_mismatch_raises():
     )
 
     with pytest.raises(GitHubResponseError) as info:
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert str(info.value) == RESPONSE_MESSAGE
@@ -1423,10 +1368,8 @@ def test_set_worker_label_final_read_of_extra_worker_label_raises():
     )
 
     with pytest.raises(GitHubResponseError):
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
 
@@ -1437,7 +1380,7 @@ def test_set_worker_label_later_call_repairs_partial_state():
         _Response([_label(LABEL_QUEUED)]),
     )
 
-    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued))
+    client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued)
 
     assert [call["request"].get_method() for call in opener.calls] == [
         "GET",
@@ -1454,7 +1397,7 @@ def test_set_worker_label_preserves_unrelated_labels():
         _Response([_label(UNRELATED_LABEL), _label(LABEL_QUEUED)]),
     )
 
-    _run(client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued))
+    client.set_worker_label(REPOSITORY, PR_NUMBER, WorkerLabel.queued)
 
     assert [call["url"] for call in opener.calls] == [
         _labels_url(),
@@ -1475,10 +1418,8 @@ def test_set_worker_label_repairs_conflict_after_failed_mutation():
     )
 
     with pytest.raises(GitHubUnavailable):
-        _run(
-            failing_client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        failing_client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     assert [
@@ -1492,10 +1433,8 @@ def test_set_worker_label_repairs_conflict_after_failed_mutation():
         _Response([_label(LABEL_QUEUED)]),
     )
 
-    _run(
-        retry_client.set_worker_label(
-            REPOSITORY, PR_NUMBER, WorkerLabel.queued
-        )
+    retry_client.set_worker_label(
+        REPOSITORY, PR_NUMBER, WorkerLabel.queued
     )
 
     assert [
@@ -1519,10 +1458,8 @@ def test_worker_label_failures_never_leak_details():
     )
 
     with pytest.raises(GitHubAuthorizationError) as info:
-        _run(
-            client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
 
     error = info.value
@@ -1541,10 +1478,8 @@ def test_worker_label_failures_never_leak_details():
         _Response([_label(LABEL_RUNNING)]),
     )
     with pytest.raises(GitHubResponseError) as mismatch_info:
-        _run(
-            mismatch_client.set_worker_label(
-                REPOSITORY, PR_NUMBER, WorkerLabel.queued
-            )
+        mismatch_client.set_worker_label(
+            REPOSITORY, PR_NUMBER, WorkerLabel.queued
         )
     mismatch_repr = repr(mismatch_info.value)
     assert mismatch_info.value.args == (RESPONSE_MESSAGE,)

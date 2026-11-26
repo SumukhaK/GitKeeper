@@ -60,15 +60,15 @@ class GitHubControlPlane(Protocol):
     desired-state convergence.
     """
 
-    async def list_open_pull_requests(
+    def list_open_pull_requests(
         self, repository: str
     ) -> list[PullRequestSnapshot]: ...
 
-    async def get_pull_request(
+    def get_pull_request(
         self, repository: str, pr_number: int
     ) -> PullRequestSnapshot: ...
 
-    async def get_check_state(
+    def get_check_state(
         self,
         repository: str,
         pr_number: int,
@@ -76,13 +76,13 @@ class GitHubControlPlane(Protocol):
         required_check_ids: tuple[str, ...],
     ) -> CheckState: ...
 
-    async def get_default_branch_config(self, repository: str) -> PilotConfig: ...
+    def get_default_branch_config(self, repository: str) -> PilotConfig: ...
 
-    async def get_worker_labels(
+    def get_worker_labels(
         self, repository: str, pr_number: int
     ) -> tuple[WorkerLabel, ...]: ...
 
-    async def set_worker_label(
+    def set_worker_label(
         self, repository: str, pr_number: int, label: WorkerLabel | None
     ) -> None: ...
 
@@ -111,7 +111,7 @@ class GitHubRestClient:
         self._opener = opener
         self._timeout_seconds = timeout_seconds
 
-    async def list_open_pull_requests(
+    def list_open_pull_requests(
         self, repository: str
     ) -> list[PullRequestSnapshot]:
         owner, name = _repository_parts(repository)
@@ -131,7 +131,7 @@ class GitHubRestClient:
             url = _next_link(_header(headers, "Link"))
         return snapshots
 
-    async def get_pull_request(
+    def get_pull_request(
         self, repository: str, pr_number: int
     ) -> PullRequestSnapshot:
         owner, name = _repository_parts(repository)
@@ -143,7 +143,7 @@ class GitHubRestClient:
         )
         return _snapshot(payload, repository, observed_at)
 
-    async def get_check_state(
+    def get_check_state(
         self,
         repository: str,
         pr_number: int,
@@ -205,7 +205,7 @@ class GitHubRestClient:
         except (TypeError, ValueError):
             raise GitHubResponseError() from None
 
-    async def get_default_branch_config(self, repository: str) -> PilotConfig:
+    def get_default_branch_config(self, repository: str) -> PilotConfig:
         owner, name = _repository_parts(repository)
         metadata, _ = self._get(f"{self._api_url}/repos/{owner}/{name}")
         if not isinstance(metadata, Mapping):
@@ -229,12 +229,12 @@ class GitHubRestClient:
         except (TypeError, ValueError):
             raise GitHubResponseError() from None
 
-    async def get_worker_labels(
+    def get_worker_labels(
         self, repository: str, pr_number: int
     ) -> tuple[WorkerLabel, ...]:
         return self._worker_label_entries(repository, pr_number)
 
-    async def set_worker_label(
+    def set_worker_label(
         self, repository: str, pr_number: int, label: WorkerLabel | None
     ) -> None:
         if label is not None and not isinstance(label, WorkerLabel):
