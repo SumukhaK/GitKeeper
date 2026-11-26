@@ -80,7 +80,7 @@ actions are separate pure functions. Caps: `MAX_CI_ATTEMPTS = 3` fix attempts,
 | `awaiting_verdict` | verdict APPROVE | `ready_to_merge` | `reviewed_sha = head_sha`; verdict posted as PR comment |
 | `awaiting_verdict` | verdict CHANGES_REQUESTED | `changes_requested` | `review_rounds += 1`; worker prompt stored; comment posted |
 | `awaiting_verdict` | 3rd CHANGES_REQUESTED | `blocked` | reason `review_rounds_exhausted` |
-| `changes_requested`, `ci_failed`, `ready_to_merge`, `review_needed`, `awaiting_verdict` | **new head SHA** | from checks: `ci_pending` / `review_needed` / `ci_failed` | any verdict for the old SHA is void |
+| `changes_requested`, `ci_failed`, `ready_to_merge`, `review_needed`, `awaiting_verdict` | **new head SHA** | from checks: `ci_pending` / `review_needed` / `ci_failed` | any verdict for the old SHA is void; a failure counts as an attempt and the CI cap applies (4th failure → `blocked`) |
 | `ready_to_merge` | owner clicks Merge | (merge call) → `done` on next poll | merge pinned with `sha = reviewed_sha` |
 | `blocked` | new head SHA | `blocked` | head updated; still needs the owner |
 | `blocked` | owner Reset | `ci_pending` | counters reset to 0; recomputed next poll |
