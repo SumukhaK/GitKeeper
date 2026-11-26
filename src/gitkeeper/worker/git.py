@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from gitkeeper.host_mode.readiness import is_repository_name
+from gitkeeper.policy.patch_scope import FileChange
 from gitkeeper.worker.models import ActiveCheckoutSnapshot
 from gitkeeper.worker.worktree import WorktreeError, WorktreePathError
 
@@ -299,6 +300,29 @@ class GitCliTransport:
             raise GitTransportError("The trusted Git process failed.")
         return result
 
+    def _run_bytes(
+        self,
+        arguments: Sequence[str],
+        *,
+        cwd: Path,
+        timeout: float | None = None,
+    ) -> bytes:
+        command = [self._git, *self._config_arguments(), *arguments]
+        try:
+            result = self._runner(
+                command,
+                cwd=str(cwd),
+                env=self._environment(),
+                capture_output=True,
+                text=False,
+                timeout=timeout or self._timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            raise GitTransportError("The trusted Git process failed.") from None
+        if result.returncode != 0:
+            raise GitTransportError("The trusted Git process failed.")
+        return result.stdout
+
     def _cache_path(self) -> Path:
         owner, name = self._repository.split("/", 1)
         _safe_component(owner, "repository owner")
@@ -563,3 +587,152 @@ class GitCliTransport:
         if len(parts) < 2 or _SHA_PATTERN.fullmatch(parts[0]) is None:
             raise GitTransportError("Git returned an invalid remote head.")
         return parts[0]
+
+    def inspect_changes(
+        self,
+        path: Path,
+        starting_sha: str,
+        *,
+        include_uncommitted: bool,
+    ) -> tuple[tuple[FileChange, ...], bool]:
+        if not isinstance(path, Path) or not path.is_absolute():
+            raise WorktreePathError("The worktree path must be absolute.")
+        if type(include_uncommitted) is not bool:
+            raise TypeError("include_uncommitted must be a boolean.")
+        sha = _sha(starting_sha)
+        revision = sha if include_uncommitted else f"{sha}..HEAD"
+        raw = self._run(
+            [
+                "diff",
+                "--raw",
+                "-z",
+                "--no-abbrev",
+                "--no-renames",
+                revision,
+                "--",
+            ],
+            cwd=path,
+        ).stdout
+        counts = self._numstat(path, revision)
+        added_text = self._added_text(path, revision)
+        changes: list[FileChange] = []
+        fields = raw.split("\0")
+        for index in range(0, len(fields) - 1, 2):
+            header = fields[index]
+            file_path = fields[index + 1]
+            if not header.startswith(":") or not file_path:
+                continue
+            metadata = header[1:].split(" ")
+            if len(metadata) != 5:
+                continue
+            old_mode, new_mode, old_sha, new_sha, letter = metadata
+            added_lines, deleted_lines = counts.get(file_path, (0, 0))
+            new_content = self._blob(path, new_sha)
+            if new_content is None and include_uncommitted:
+                candidate = path / file_path
+                if candidate.is_file():
+                    new_content = candidate.read_bytes()
+            changes.append(
+                FileChange(
+                    path=file_path,
+                    status={"A": "added", "M": "modified", "D": "deleted"}.get(
+                        letter, letter
+                    ),
+                    added_lines=added_lines,
+                    deleted_lines=deleted_lines,
+                    old_mode=None if old_mode == "000000" else old_mode,
+                    new_mode=None if new_mode == "000000" else new_mode,
+                    old_content=self._blob(path, old_sha),
+                    new_content=new_content,
+                    added_text=added_text.get(file_path, ""),
+                )
+            )
+
+        unstaged = False
+        if include_uncommitted:
+            unstaged = self._has_unstaged(path)
+            for untracked in self._untracked(path):
+                content = (path / untracked).read_bytes()
+                changes.append(
+                    FileChange(
+                        path=untracked,
+                        status="added",
+                        added_lines=len(content.splitlines()),
+                        deleted_lines=0,
+                        old_mode=None,
+                        new_mode="100644",
+                        old_content=None,
+                        new_content=content,
+                        added_text=content.decode("utf-8", "replace"),
+                    )
+                )
+                unstaged = True
+        changes.sort(key=lambda change: change.path)
+        return tuple(changes), unstaged
+
+    def _blob(self, path: Path, sha: str) -> bytes | None:
+        if not sha or all(character == "0" for character in sha):
+            return None
+        return self._run_bytes(["cat-file", "blob", sha], cwd=path)
+
+    def _numstat(
+        self, path: Path, revision: str
+    ) -> dict[str, tuple[int, int]]:
+        output = self._run(
+            ["diff", "--numstat", "-z", "--no-renames", revision, "--"],
+            cwd=path,
+        ).stdout
+        result: dict[str, tuple[int, int]] = {}
+        for entry in output.split("\0"):
+            if not entry:
+                continue
+            parts = entry.split("\t", 2)
+            if len(parts) != 3:
+                continue
+            added, deleted, file_path = parts
+            result[file_path] = (
+                0 if added == "-" else int(added),
+                0 if deleted == "-" else int(deleted),
+            )
+        return result
+
+    def _added_text(self, path: Path, revision: str) -> dict[str, str]:
+        output = self._run(
+            [
+                "diff",
+                "-U0",
+                "--no-color",
+                "--no-ext-diff",
+                "--no-renames",
+                revision,
+                "--",
+            ],
+            cwd=path,
+        ).stdout
+        result: dict[str, str] = {}
+        current: str | None = None
+        for line in output.splitlines():
+            if line.startswith("+++ b/"):
+                current = line[6:]
+                result.setdefault(current, "")
+            elif line.startswith("+++ /dev/null"):
+                current = None
+            elif current is not None and line.startswith("+") and not line.startswith(
+                "+++"
+            ):
+                result[current] += line[1:] + "\n"
+        return result
+
+    def _untracked(self, path: Path) -> tuple[str, ...]:
+        output = self._run(
+            ["ls-files", "--others", "--exclude-standard", "-z"], cwd=path
+        ).stdout
+        return tuple(item for item in output.split("\0") if item)
+
+    def _has_unstaged(self, path: Path) -> bool:
+        result = self._run(["diff", "--quiet"], cwd=path, check=False)
+        if result.returncode == 0:
+            return False
+        if result.returncode == 1:
+            return True
+        raise GitTransportError("Git could not inspect the working tree.")

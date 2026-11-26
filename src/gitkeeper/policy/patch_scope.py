@@ -192,10 +192,15 @@ class RemotePrState:
     head_sha: str | None
     is_open: bool
     is_draft: bool
+    head_repository: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.number, int) or isinstance(self.number, bool):
             raise TypeError("A pull request number must be an integer.")
+        if self.head_repository is not None and (
+            not isinstance(self.head_repository, str) or not self.head_repository
+        ):
+            raise TypeError("head_repository must be a repository name or None.")
 
 
 @dataclass(frozen=True)
@@ -636,6 +641,16 @@ def _remote_violations(remote: RemotePrState | None, starting_sha: str) -> list[
             ScopeViolation(
                 ScopeReason.PR_NOT_ELIGIBLE,
                 f"{remote.repository} is not the pilot repository",
+            )
+        )
+    if (
+        remote.head_repository is not None
+        and remote.head_repository.casefold() != remote.repository.casefold()
+    ):
+        violations.append(
+            ScopeViolation(
+                ScopeReason.PR_NOT_ELIGIBLE,
+                "the pull request head repository is a fork",
             )
         )
     if not remote.head_sha:

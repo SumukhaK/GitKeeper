@@ -382,3 +382,80 @@ def test_remote_head_missing_branch_and_other_repository(tmp_path) -> None:
         transport.remote_head(_REPOSITORY, "repair/missing")
     with pytest.raises(ValueError):
         transport.remote_head("Other/Repo", "repair/test")
+
+def test_inspect_changes_reports_content_and_added_text(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"hello\nchanged\n")
+    (worktree / "new.txt").write_bytes(b"brand new\n")
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert [change.path for change in changes] == ["file.txt", "new.txt"]
+    modified, added = changes
+    assert modified.status == "modified"
+    assert modified.added_lines == 1
+    assert modified.deleted_lines == 0
+    assert modified.old_content == b"hello\n"
+    assert modified.new_content == b"hello\nchanged\n"
+    assert "changed" in modified.added_text
+    assert added.status == "added"
+    assert added.old_content is None
+    assert added.new_content == b"brand new\n"
+    assert unstaged is True
+
+
+def test_inspect_changes_marks_deleted_files(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").unlink()
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert len(changes) == 1
+    assert changes[0].status == "deleted"
+    assert changes[0].old_content == b"hello\n"
+    assert changes[0].new_content is None
+    assert unstaged is True
+
+
+def test_inspect_committed_changes_excludes_uncommitted(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+    (worktree / "file.txt").write_bytes(b"hello\nchanged\n")
+    (worktree / "untracked.txt").write_bytes(b"ignore me\n")
+    transport.stage(worktree, ("file.txt",))
+    transport.commit(worktree, "Commit the change")
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=False
+    )
+
+    assert [change.path for change in changes] == ["file.txt"]
+    assert changes[0].status == "modified"
+    assert changes[0].new_content == b"hello\nchanged\n"
+    assert unstaged is False
+
+
+def test_inspect_changes_with_no_changes(tmp_path) -> None:
+    remote, work, sha = _remote(tmp_path)
+    transport, _ = _transport(tmp_path, work, remote)
+    worktree = tmp_path / "managed" / "worktree"
+    transport.add_detached(worktree, sha)
+
+    changes, unstaged = transport.inspect_changes(
+        worktree, sha, include_uncommitted=True
+    )
+
+    assert changes == ()
+    assert unstaged is False
