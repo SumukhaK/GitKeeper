@@ -1,5 +1,6 @@
 import sqlite3
 import subprocess
+import sys
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -305,6 +306,7 @@ def test_repository_with_extra_components_is_rejected(tmp_path) -> None:
     store.close()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction creation is required.")
 def test_case_insensitive_junction_escape_is_rejected_and_preserved(
     tmp_path,
 ) -> None:
