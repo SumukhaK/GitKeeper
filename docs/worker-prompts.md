@@ -1,6 +1,6 @@
-# Worker prompts
+# Worker and reviewer prompts
 
-Two prompts cover every task. Paste them into OpenCode or Copilot, replacing the
+Three prompts cover every task: start it, review it, send changes back. Paste them into OpenCode or Copilot, replacing the
 `<…>` parts. The issue itself holds the task details; these prompts set the ground rules.
 
 ## 1. Start a task
@@ -39,9 +39,51 @@ Rules:
 9. Then STOP. Do not merge, do not start another issue, do not "tidy up".
 ```
 
-## 2. Send review changes back
+## 2. Review a PR
 
-Replace `<PR>` and `<BRANCH>`, and paste the reviewer's `WORKER PROMPT:` block where shown.
+Give this to the **reviewer**, not the worker that wrote the PR. Replace `<PR>`.
+Prefer a stronger or different model from the one that did the work: a model reviewing its
+own output shares its blind spots.
+
+```
+You are the REVIEWER for the GitKeeper repository (github.com/SumukhaK/GitKeeper).
+You review; you do not write or change code, and you do not merge.
+
+Review pull request #<PR>.
+
+1. Gather the review packet yourself:
+   - gh pr view <PR> --comments          (title, body, Verification section)
+   - the issue it closes: gh issue view <N>   (acceptance criteria, allowed files)
+   - gh pr diff <PR>
+   - gh pr checks <PR>
+2. Check out the PR branch and run: py -m pytest -q
+   Report the result. Do not commit anything.
+3. Review against prompts/review.md (on the PR branch or main), plus AGENTS.md,
+   docs/PRD.md and docs/TECHNICAL.md. In particular:
+   - every acceptance criterion met, nothing extra
+   - only the files the issue allows were changed
+   - tests were written for the behaviour and would fail without the change
+   - the Verification section is real proof, not a claim
+   - no workarounds, duplicated logic, or comments justifying shortcuts
+4. Post your review as a PR comment: gh pr comment <PR> --body-file <file>
+   Be specific: file, line, problem, what to do instead.
+5. End the comment with exactly one block, and nothing after it:
+
+   VERDICT: APPROVE
+
+   or
+
+   VERDICT: CHANGES_REQUESTED
+   WORKER PROMPT:
+   <numbered, self-contained instructions the worker can follow on the
+   same branch without seeing this review, including how to verify each>
+
+6. STOP. Do not push, approve via the GitHub UI, or merge.
+```
+
+## 3. Send review changes back
+
+Use this only **after** a review asked for changes. Replace `<PR>` and `<BRANCH>`, and paste the reviewer's `WORKER PROMPT:` block where shown. Every placeholder must be filled, or the worker will rightly refuse.
 
 ```
 You are a worker agent on GitKeeper. The reviewer requested changes on
