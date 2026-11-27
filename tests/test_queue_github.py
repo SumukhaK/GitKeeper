@@ -1710,7 +1710,9 @@ def test_post_pr_comment_sends_exact_request_and_returns_url():
     }
 
 
-@pytest.mark.parametrize("body", ["", "a" * 60_001, None, 7])
+@pytest.mark.parametrize(
+    "body", ["", "a" * 60_001, None, 7], ids=["empty", "too_long", "none", "number"]
+)
 def test_post_pr_comment_rejects_invalid_bodies_without_request(body):
     client, opener = _client()
     with pytest.raises(ValueError):

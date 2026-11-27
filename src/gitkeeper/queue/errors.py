@@ -13,6 +13,7 @@ class ErrorCategory(str, Enum):
     github_authorization = "github_authorization"
     github_response = "github_response"
     pull_request_not_found = "pull_request_not_found"
+    merge_refused = "merge_refused"
     remote_stale = "remote_stale"
     local_lease_conflict = "local_lease_conflict"
     stale_head = "stale_head"
@@ -33,6 +34,7 @@ _ERROR_MESSAGES = {
     ErrorCategory.github_authorization: "GitHub authorization failed.",
     ErrorCategory.github_response: "GitHub returned an invalid response.",
     ErrorCategory.pull_request_not_found: "The pull request was not found.",
+    ErrorCategory.merge_refused: "GitHub refused the pull request merge.",
     ErrorCategory.remote_stale: "Remote queue state is stale.",
     ErrorCategory.local_lease_conflict: "The local queue lease is unavailable.",
     ErrorCategory.stale_head: "The pull request head is stale.",
@@ -106,6 +108,15 @@ class PullRequestNotFound(GitHubResponseError):
     """Reserved for a 404 returned by the single-pull-request endpoint."""
 
     category = ErrorCategory.pull_request_not_found
+
+    def __init__(self) -> None:
+        QueueError.__init__(self, self.category)
+
+
+class MergeRefused(GitHubResponseError):
+    """GitHub declined a merge because the pull request is not mergeable."""
+
+    category = ErrorCategory.merge_refused
 
     def __init__(self) -> None:
         QueueError.__init__(self, self.category)
