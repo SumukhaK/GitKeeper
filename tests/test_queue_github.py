@@ -28,7 +28,7 @@ from gitkeeper.queue import (
     PullRequestSnapshot,
     WorkerLabel,
 )
-from gitkeeper.queue.github import GitHubControlPlane, GitHubRestClient
+from gitkeeper.queue.github import GitHubControlPlane, GitHubRestClient, PrDetails
 
 API = "https://api.github.com"
 REPOSITORY = "SumukhaK/Setu-mobile"
@@ -1486,3 +1486,290 @@ def test_worker_label_failures_never_leak_details():
     assert TOKEN not in mismatch_repr
     assert API not in mismatch_repr
     assert LABEL_RUNNING not in mismatch_repr
+
+# --- relay reads ---------------------------------------------------------
+
+
+def _pr_payload(body="Closes #61"):
+    return {
+        "number": PR_NUMBER,
+        "title": "Relay reads",
+        "body": body,
+        "html_url": f"https://github.com/{REPOSITORY}/pull/{PR_NUMBER}",
+        "state": "open",
+        "merged": False,
+        "draft": False,
+        "head": {
+            "sha": HEAD_SHA,
+            "ref": "feature/relay",
+            "repo": {"full_name": REPOSITORY},
+        },
+        "user": {"login": "SumukhaK"},
+    }
+
+
+def _issue_payload(number, *, body=None):
+    return {"number": number, "title": f"Task {number}", "body": body, "state": "open"}
+
+
+def _replace(payload, path, value):
+    if not path:
+        return value
+    target = payload
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    return payload
+
+
+_RELAY_READS = (
+    ("get_pr_details", (REPOSITORY, PR_NUMBER)),
+    ("get_issue", (REPOSITORY, PR_NUMBER)),
+    ("get_pr_diff", (REPOSITORY, PR_NUMBER)),
+    ("get_check_annotations", (REPOSITORY, RUN_ID)),
+    ("next_task_issue", (REPOSITORY,)),
+)
+
+
+def test_get_pr_details_maps_fields_and_first_closing_reference():
+    client, opener = _client(_Response(_pr_payload("Fixes #7; Closes #61")))
+
+    details = client.get_pr_details(REPOSITORY, PR_NUMBER)
+
+    assert details == PrDetails(
+        PR_NUMBER,
+        "Relay reads",
+        "Fixes #7; Closes #61",
+        f"https://github.com/{REPOSITORY}/pull/{PR_NUMBER}",
+        HEAD_SHA,
+        "feature/relay",
+        REPOSITORY,
+        "SumukhaK",
+        False,
+        True,
+        False,
+        7,
+    )
+    assert opener.calls[0]["url"] == f"{API}/repos/{REPOSITORY}/pulls/{PR_NUMBER}"
+
+
+@pytest.mark.parametrize(
+    ("body", "linked"),
+    [(None, None), ("No reference", None), ("resolves #61", 61), ("Closes #0", None)],
+)
+def test_get_pr_details_handles_null_body_and_closing_keywords(body, linked):
+    client, _ = _client(_Response(_pr_payload(body)))
+
+    assert client.get_pr_details(REPOSITORY, PR_NUMBER).linked_issue == linked
+
+
+def test_get_pr_details_maps_closed_merged_state():
+    payload = _replace(_pr_payload(), ("state",), "closed")
+    payload = _replace(payload, ("merged",), True)
+    payload = _replace(payload, ("draft",), True)
+    client, _ = _client(_Response(payload))
+
+    details = client.get_pr_details(REPOSITORY, PR_NUMBER)
+
+    assert details.is_open is False
+    assert details.is_merged is True
+    assert details.is_draft is True
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ((), []),
+        (("number",), 0),
+        (("title",), None),
+        (("body",), 7),
+        (("state",), "unknown"),
+        (("head", "sha"), "bad"),
+        (("head", "repo", "full_name"), 7),
+        (("user", "login"), 7),
+    ],
+)
+def test_get_pr_details_rejects_unexpected_shapes(path, value):
+    client, _ = _client(_Response(_replace(_pr_payload(), path, value)))
+
+    with pytest.raises(GitHubResponseError):
+        client.get_pr_details(REPOSITORY, PR_NUMBER)
+
+
+def test_get_issue_maps_fields_and_rejects_pull_requests():
+    client, opener = _client(_Response(_issue_payload(61)))
+
+    issue = client.get_issue(REPOSITORY, 61)
+
+    assert (issue.number, issue.title, issue.body, issue.is_open) == (
+        61,
+        "Task 61",
+        "",
+        True,
+    )
+    assert opener.calls[0]["url"] == f"{API}/repos/{REPOSITORY}/issues/61"
+    pull = _replace(_issue_payload(61), ("pull_request",), {"url": "pr"})
+    pull_client, _ = _client(_Response(pull))
+    with pytest.raises(GitHubResponseError):
+        pull_client.get_issue(REPOSITORY, 61)
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        ((), []),
+        (("number",), True),
+        (("title",), None),
+        (("body",), 1),
+        (("state",), "unknown"),
+    ],
+)
+def test_get_issue_rejects_unexpected_shapes(path, value):
+    client, _ = _client(_Response(_replace(_issue_payload(61), path, value)))
+
+    with pytest.raises(GitHubResponseError):
+        client.get_issue(REPOSITORY, 61)
+
+
+def test_get_pr_diff_uses_diff_media_type_and_decodes_utf8():
+    client, opener = _client(_Response(b"diff --git a/a b/a\n"))
+
+    assert client.get_pr_diff(REPOSITORY, PR_NUMBER) == "diff --git a/a b/a\n"
+    request = opener.calls[0]["request"]
+    assert request.get_header("Accept") == "application/vnd.github.diff"
+
+
+@pytest.mark.parametrize("size,valid", [(2 * 1024 * 1024, True), (2 * 1024 * 1024 + 1, False)])
+def test_get_pr_diff_enforces_two_megabyte_limit(size, valid):
+    client, _ = _client(_Response(b"a" * size))
+
+    if valid:
+        assert len(client.get_pr_diff(REPOSITORY, PR_NUMBER)) == size
+    else:
+        with pytest.raises(GitHubResponseError):
+            client.get_pr_diff(REPOSITORY, PR_NUMBER)
+
+
+def test_get_pr_diff_rejects_invalid_utf8():
+    client, _ = _client(_Response(b"\xff"))
+
+    with pytest.raises(GitHubResponseError):
+        client.get_pr_diff(REPOSITORY, PR_NUMBER)
+
+
+def test_get_check_annotations_formats_and_caps_at_fifty():
+    payload = [
+        {"path": f"src/{index}.py", "start_line": index + 1, "message": f"failure {index}"}
+        for index in range(55)
+    ]
+    client, opener = _client(_Response(payload))
+
+    annotations = client.get_check_annotations(REPOSITORY, RUN_ID)
+
+    assert len(annotations) == 50
+    assert annotations[0] == "src/0.py:1 failure 0"
+    assert annotations[-1] == "src/49.py:50 failure 49"
+    assert opener.calls[0]["url"] == (
+        f"{API}/repos/{REPOSITORY}/check-runs/{RUN_ID}/annotations?per_page=50"
+    )
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        None,
+        {},
+        {"path": "a", "start_line": 0, "message": "bad"},
+        {"path": "a", "start_line": 1, "message": None},
+    ],
+)
+def test_get_check_annotations_rejects_unexpected_shapes(item):
+    client, _ = _client(_Response([item]))
+
+    with pytest.raises(GitHubResponseError):
+        client.get_check_annotations(REPOSITORY, RUN_ID)
+
+
+def test_next_task_issue_skips_all_issues_linked_by_open_prs():
+    pull = _replace(_issue_payload(61), ("pull_request",), {"url": "pr"})
+    client, opener = _client(
+        _Response([_issue_payload(60), pull, _issue_payload(62)]),
+        _Response([{"number": PR_NUMBER, "body": "Closes #60\nFixes #61"}]),
+    )
+
+    assert client.next_task_issue(REPOSITORY).number == 62
+    assert [call["url"] for call in opener.calls] == [
+        f"{API}/repos/{REPOSITORY}/issues?state=open&labels=task&sort=created&direction=asc",
+        f"{API}/repos/{REPOSITORY}/pulls?state=open&per_page=100",
+    ]
+
+
+def test_next_task_issue_returns_none_when_tasks_are_empty_or_all_linked():
+    empty_client, _ = _client(_Response([]), _Response([]))
+    assert empty_client.next_task_issue(REPOSITORY) is None
+    linked_client, _ = _client(
+        _Response([_issue_payload(61)]),
+        _Response([{"number": PR_NUMBER, "body": "Resolves #61"}]),
+    )
+    assert linked_client.next_task_issue(REPOSITORY) is None
+
+
+def test_next_task_issue_follows_pagination_for_tasks_and_open_prs():
+    task_page = f"{API}/repos/{REPOSITORY}/issues?state=open&page=2"
+    pr_page = f"{API}/repos/{REPOSITORY}/pulls?state=open&page=2"
+    client, opener = _client(
+        _Response([], {"Link": f'<{task_page}>; rel="next"'}),
+        _Response([_issue_payload(61)]),
+        _Response(
+            [{"number": PR_NUMBER, "body": None}],
+            {"Link": f'<{pr_page}>; rel="next"'},
+        ),
+        _Response([{"number": 43, "body": "Closes #61"}]),
+    )
+
+    assert client.next_task_issue(REPOSITORY) is None
+    assert len(opener.calls) == 4
+
+
+@pytest.mark.parametrize(
+    ("tasks", "pulls"),
+    [
+        ({}, []),
+        ([None], []),
+        ([], {}),
+        ([], [None]),
+        ([], [{"body": "Closes #61"}]),
+        ([], [{"number": 43, "body": 1}]),
+    ],
+)
+def test_next_task_issue_rejects_unexpected_shapes(tasks, pulls):
+    client, _ = _client(_Response(tasks), _Response(pulls))
+
+    with pytest.raises(GitHubResponseError):
+        client.next_task_issue(REPOSITORY)
+
+
+@pytest.mark.parametrize(("method", "args"), _RELAY_READS)
+def test_relay_reads_reject_malformed_json(method, args):
+    client, _ = _client(_Response(b"not json"))
+
+    with pytest.raises(GitHubResponseError):
+        getattr(client, method)(*args)
+
+
+@pytest.mark.parametrize(
+    ("method", "args", "error"),
+    [
+        (*_RELAY_READS[0], PullRequestNotFound),
+        (*_RELAY_READS[1], GitHubResponseError),
+        (*_RELAY_READS[2], PullRequestNotFound),
+        (*_RELAY_READS[3], GitHubResponseError),
+        (*_RELAY_READS[4], GitHubResponseError),
+    ],
+)
+def test_relay_reads_map_404_errors_without_retries(method, args, error):
+    client, opener = _client(_http_error(404))
+
+    with pytest.raises(error):
+        getattr(client, method)(*args)
+    assert len(opener.calls) == 1
