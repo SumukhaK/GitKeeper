@@ -4,7 +4,8 @@ Every public operation issues the minimum HTTP requests the endpoint requires
 and raises only the fixed queue error categories. Backoff belongs to the
 poller, so nothing is retried or logged here, and no response detail, URL, or
 credential ever reaches an error message. Worker-label writes converge to a
-desired state instead of blindly mutating.
+desired state instead of blindly mutating; relay writes validate their inputs
+and response shapes at the boundary.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from gitkeeper.queue.errors import (
     GitHubAuthorizationError,
     GitHubResponseError,
     GitHubUnavailable,
+    MergeRefused,
     PullRequestNotFound,
 )
 from gitkeeper.queue.models import (
@@ -98,7 +100,7 @@ class _CheckRun:
 
 
 class GitHubRestClient(GitHubReads):
-    """GitHub REST reads plus worker-label writes for the queue poller."""
+    """GitHub REST reads, queue-label writes, and relay writes."""
 
     def __init__(
         self,
@@ -246,6 +248,30 @@ class GitHubRestClient(GitHubReads):
         except (TypeError, ValueError):
             raise GitHubResponseError() from None
 
+    def post_pr_comment(self, repository: str, pr_number: int, body: str) -> str:
+        if not isinstance(body, str) or not 1 <= len(body) <= 60_000:
+            raise ValueError("A comment body must contain 1 to 60,000 characters.")
+        number = _pr_number(pr_number)
+        raw, _ = self._write(
+            f"{self._repository_url(repository)}/issues/{number}/comments",
+            method="POST",
+            payload={"body": body},
+        )
+        return _response_string(_decode_json(raw), "html_url")
+
+    def merge_pull_request(
+        self, repository: str, pr_number: int, *, expected_head_sha: str
+    ) -> str:
+        number = _pr_number(pr_number)
+        head_sha = _requested_sha(expected_head_sha)
+        raw, _ = self._write(
+            f"{self._repository_url(repository)}/pulls/{number}/merge",
+            method="PUT",
+            payload={"merge_method": "squash", "sha": head_sha},
+            merge_refused=True,
+        )
+        return _requested_sha(_response_string(_decode_json(raw), "sha"))
+
     def get_worker_labels(
         self, repository: str, pr_number: int
     ) -> tuple[WorkerLabel, ...]:
@@ -322,12 +348,19 @@ class GitHubRestClient(GitHubReads):
         return _decode_json(payload), headers
 
     def _write(
-        self, url: str, *, method: str, payload: object | None = None
-    ) -> None:
+        self,
+        url: str,
+        *,
+        method: str,
+        payload: object | None = None,
+        merge_refused: bool = False,
+    ) -> tuple[object, object]:
         body = None
         if payload is not None:
             body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        self._request(url, method=method, body=body)
+        return self._request(
+            url, method=method, body=body, merge_refused=merge_refused
+        )
 
     def _request(
         self,
@@ -337,6 +370,7 @@ class GitHubRestClient(GitHubReads):
         body: bytes | None = None,
         not_found_is_missing: bool = False,
         accept: str | None = None,
+        merge_refused: bool = False,
     ) -> tuple[object, object]:
         headers = self._headers()
         if accept is not None:
@@ -347,7 +381,7 @@ class GitHubRestClient(GitHubReads):
         try:
             response = self._opener(request, timeout=self._timeout_seconds)
         except HTTPError as error:
-            self._raise_http_error(error, not_found_is_missing)
+            self._raise_http_error(error, not_found_is_missing, merge_refused)
         except (URLError, TimeoutError, ConnectionError):
             raise GitHubUnavailable() from None
         return _read_body(response), getattr(response, "headers", None)
@@ -366,7 +400,10 @@ class GitHubRestClient(GitHubReads):
         }
 
     def _raise_http_error(
-        self, error: HTTPError, not_found_is_missing: bool
+        self,
+        error: HTTPError,
+        not_found_is_missing: bool,
+        merge_refused: bool = False,
     ) -> NoReturn:
         code = getattr(error, "code", None)
         if code in (401, 403):
@@ -375,6 +412,8 @@ class GitHubRestClient(GitHubReads):
             if not_found_is_missing:
                 raise PullRequestNotFound() from None
             raise GitHubResponseError() from None
+        if merge_refused and code in (405, 409):
+            raise MergeRefused() from None
         if code == 429:
             raise GitHubUnavailable() from None
         if isinstance(code, int) and 500 <= code <= 599:
@@ -483,6 +522,15 @@ def _decode_json(raw: object) -> object:
         return json.loads(text)
     except (TypeError, ValueError):
         raise GitHubResponseError() from None
+
+
+def _response_string(payload: object, field: str) -> str:
+    if not isinstance(payload, Mapping):
+        raise GitHubResponseError()
+    value = payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise GitHubResponseError()
+    return value
 
 
 def _worker_label_entry(item: object) -> WorkerLabel | None:
