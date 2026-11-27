@@ -1,10 +1,10 @@
-"""Read-only GitHub control-plane adapter tests.
+"""GitHub control-plane adapter tests.
 
 The adapter is fenced to fixed queue error categories and performs exactly one
-HTTP request per intended endpoint read, because the poller owns backoff.
+HTTP request per intended endpoint operation, because the poller owns backoff.
 These tests pin the wire mapping, pagination, per-page observation timestamps,
-error translation, and default-branch configuration decoding without any
-network access.
+error translation, default-branch configuration decoding, and relay writes
+without any network access.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from gitkeeper.queue import (
     PullRequestSnapshot,
     WorkerLabel,
 )
+from gitkeeper.queue.errors import ErrorCategory, MergeRefused
 from gitkeeper.queue.github import GitHubControlPlane, GitHubRestClient
 from gitkeeper.relay.github_reads import PrDetails
 
@@ -53,6 +54,8 @@ AUTHORIZATION_MESSAGE = "GitHub authorization failed."
 UNAVAILABLE_MESSAGE = "GitHub is unavailable."
 RESPONSE_MESSAGE = "GitHub returned an invalid response."
 NOT_FOUND_MESSAGE = "The pull request was not found."
+MERGE_REFUSED_MESSAGE = "GitHub refused the pull request merge."
+COMMENT_URL = f"https://github.com/{REPOSITORY}/pull/{PR_NUMBER}#issuecomment-123"
 
 
 class _Response:
@@ -1683,3 +1686,106 @@ def test_relay_reads_map_404_errors_without_retries(method, args, error):
     with pytest.raises(error):
         getattr(client, method)(*args)
     assert len(opener.calls) == 1
+
+
+# R9 relay writes.
+def test_post_pr_comment_sends_exact_request_and_returns_url():
+    body = "VERDICT: APPROVE\nChecks are green."
+    client, opener = _client(_Response({"html_url": COMMENT_URL}))
+
+    assert client.post_pr_comment(REPOSITORY, PR_NUMBER, body) == COMMENT_URL
+
+    assert len(opener.calls) == 1
+    call = opener.calls[0]
+    assert call["request"].get_method() == "POST"
+    assert call["url"] == f"{API}/repos/{REPOSITORY}/issues/{PR_NUMBER}/comments"
+    assert call["request"].data == (
+        b'{"body":"VERDICT: APPROVE\\nChecks are green."}'
+    )
+    assert {key.lower(): value for key, value in call["request"].header_items()} == {
+        "accept": "application/vnd.github+json",
+        "authorization": f"Bearer {TOKEN}",
+        "content-type": "application/json",
+        "user-agent": "GitKeeper",
+    }
+
+
+@pytest.mark.parametrize("body", ["", "a" * 60_001, None, 7])
+def test_post_pr_comment_rejects_invalid_bodies_without_request(body):
+    client, opener = _client()
+    with pytest.raises(ValueError):
+        client.post_pr_comment(REPOSITORY, PR_NUMBER, body)
+    assert opener.calls == []
+
+
+def test_post_pr_comment_accepts_maximum_length():
+    body = "a" * 60_000
+    client, opener = _client(_Response({"html_url": COMMENT_URL}))
+    assert client.post_pr_comment(REPOSITORY, PR_NUMBER, body) == COMMENT_URL
+    assert json.loads(opener.calls[0]["request"].data) == {"body": body}
+
+
+@pytest.mark.parametrize("payload", [[], {}, {"html_url": ""}, {"html_url": 7}])
+def test_post_pr_comment_rejects_unexpected_response_shapes(payload):
+    client, _ = _client(_Response(payload))
+    with pytest.raises(GitHubResponseError):
+        client.post_pr_comment(REPOSITORY, PR_NUMBER, "VERDICT: APPROVE")
+
+
+def test_merge_pull_request_sends_exact_request_and_returns_commit_sha():
+    merge_sha = "b" * 40
+    client, opener = _client(_Response({"sha": merge_sha}))
+
+    assert client.merge_pull_request(
+        REPOSITORY, PR_NUMBER, expected_head_sha=HEAD_SHA,
+    ) == merge_sha
+
+    assert len(opener.calls) == 1
+    call = opener.calls[0]
+    assert call["request"].get_method() == "PUT"
+    assert call["url"] == f"{API}/repos/{REPOSITORY}/pulls/{PR_NUMBER}/merge"
+    assert call["request"].data == (
+        b'{"merge_method":"squash","sha":"a153271a18241b3cf5b9d5ed7025916c6b11e9f8"}'
+    )
+    assert {key.lower(): value for key, value in call["request"].header_items()} == {
+        "accept": "application/vnd.github+json",
+        "authorization": f"Bearer {TOKEN}",
+        "content-type": "application/json",
+        "user-agent": "GitKeeper",
+    }
+
+
+@pytest.mark.parametrize("status", [405, 409])
+def test_merge_pull_request_maps_refusal_without_retry(status):
+    client, opener = _client(_http_error(status), _Response({"sha": "b" * 40}))
+
+    with pytest.raises(MergeRefused) as caught:
+        client.merge_pull_request(REPOSITORY, PR_NUMBER, expected_head_sha=HEAD_SHA)
+
+    error = caught.value
+    assert error.category is ErrorCategory.merge_refused
+    assert str(error) == MERGE_REFUSED_MESSAGE
+    assert len(opener.calls) == 1
+
+
+@pytest.mark.parametrize("payload", [[], {}, {"sha": ""}, {"sha": 7}])
+def test_merge_pull_request_rejects_unexpected_response_shapes(payload):
+    client, _ = _client(_Response(payload))
+    with pytest.raises(GitHubResponseError):
+        client.merge_pull_request(REPOSITORY, PR_NUMBER, expected_head_sha=HEAD_SHA)
+
+
+@pytest.mark.parametrize("body", [b"not json", b'{"sha":7}', b'{"sha":"bad"}'])
+def test_merge_pull_request_rejects_invalid_merge_sha_responses(body):
+    client, opener = _client(_Response(body))
+    with pytest.raises(GitHubResponseError):
+        client.merge_pull_request(REPOSITORY, PR_NUMBER, expected_head_sha=HEAD_SHA)
+    assert len(opener.calls) == 1
+
+
+@pytest.mark.parametrize("head_sha", ["", "bad", HEAD_SHA.upper()])
+def test_merge_pull_request_rejects_invalid_expected_head_without_request(head_sha):
+    client, opener = _client()
+    with pytest.raises(GitHubResponseError):
+        client.merge_pull_request(REPOSITORY, PR_NUMBER, expected_head_sha=head_sha)
+    assert opener.calls == []
