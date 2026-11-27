@@ -37,6 +37,7 @@ from gitkeeper.queue.models import (
     WorkerLabel,
 )
 from gitkeeper.queue.readiness_adapter import parse_pilot_config
+from gitkeeper.relay.github_reads import GitHubReads
 
 _ACCEPT = "application/vnd.github+json"
 _USER_AGENT = "GitKeeper"
@@ -96,7 +97,7 @@ class _CheckRun:
     suite_id: int | None
 
 
-class GitHubRestClient:
+class GitHubRestClient(GitHubReads):
     """GitHub REST reads plus worker-label writes for the queue poller."""
 
     def __init__(
@@ -110,6 +111,22 @@ class GitHubRestClient:
         self._token_provider = token_provider
         self._opener = opener
         self._timeout_seconds = timeout_seconds
+
+    def _repository_url(self, repository: str) -> str:
+        _repository_parts(repository)
+        return f"{self._api_url}/repos/{repository}"
+
+    def _collection(self, url: str) -> list[object]:
+        visited: set[str] = set()
+        entries: list[object] = []
+        while url is not None:
+            _guard_page(url, visited)
+            payload, headers = self._get(url)
+            if not isinstance(payload, list):
+                raise GitHubResponseError()
+            entries.extend(payload)
+            url = _next_link(_header(headers, "Link"))
+        return entries
 
     def list_open_pull_requests(
         self, repository: str
@@ -319,8 +336,11 @@ class GitHubRestClient:
         method: str,
         body: bytes | None = None,
         not_found_is_missing: bool = False,
+        accept: str | None = None,
     ) -> tuple[object, object]:
         headers = self._headers()
+        if accept is not None:
+            headers["Accept"] = accept
         if body is not None:
             headers["Content-Type"] = "application/json"
         request = Request(url, data=body, headers=headers, method=method)
