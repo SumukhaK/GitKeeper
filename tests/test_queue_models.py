@@ -75,6 +75,7 @@ from gitkeeper.queue import (
     parse_pilot_config,
     to_readiness_reason,
 )
+from gitkeeper.queue.errors import MergeRefused
 
 UTC = timezone.utc
 NOW = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
@@ -1438,6 +1439,7 @@ def test_typed_errors_fix_their_categories_and_reject_raw_data():
         GitHubAuthorizationError: ErrorCategory.github_authorization,
         GitHubResponseError: ErrorCategory.github_response,
         PullRequestNotFound: ErrorCategory.pull_request_not_found,
+        MergeRefused: ErrorCategory.merge_refused,
         RemoteStale: ErrorCategory.remote_stale,
         LocalLeaseConflict: ErrorCategory.local_lease_conflict,
         StaleHead: ErrorCategory.stale_head,
