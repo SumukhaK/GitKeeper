@@ -40,10 +40,7 @@ def test_creates_one_wal_database_with_version_one_and_the_required_schema(
         with closing(sqlite3.connect(path)) as db:
             assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
             assert db.execute("PRAGMA user_version").fetchone()[0] == 1
-            columns = {
-                row[1]
-                for row in db.execute("PRAGMA table_info(pull_requests)").fetchall()
-            }
+            columns = {row[1] for row in db.execute("PRAGMA table_info(pull_requests)").fetchall()}
             assert columns == {
                 "repository",
                 "number",
@@ -65,10 +62,13 @@ def test_creates_one_wal_database_with_version_one_and_the_required_schema(
                 if row[5]
             ]
             assert primary_key == ["repository", "number"]
-            assert [
-                row[1]
-                for row in db.execute("PRAGMA table_info(events)").fetchall()
-            ] == ["repository", "number", "at", "kind", "detail"]
+            assert [row[1] for row in db.execute("PRAGMA table_info(events)").fetchall()] == [
+                "repository",
+                "number",
+                "at",
+                "kind",
+                "detail",
+            ]
     finally:
         store.close()
 
@@ -93,9 +93,10 @@ def test_refuses_a_database_inside_a_git_checkout_without_creating_it(
     assert not path.parent.exists() or path.parent == checkout
 
 
-def test_round_trips_every_record_field_and_a_worker_prompt(tmp_path) -> None:
+@pytest.mark.parametrize("phase", [Phase.ready_to_merge, Phase.blocked])
+def test_round_trips_every_record_field_and_a_worker_prompt(tmp_path, phase: Phase) -> None:
     path = tmp_path / "relay.sqlite3"
-    expected = record(Phase.ready_to_merge, review_rounds=2, ci_attempts=3)
+    expected = record(phase=phase, review_rounds=2, ci_attempts=3)
     store = RelayStore(path)
     try:
         assert store.get(REPO, 56) is None
@@ -117,7 +118,7 @@ def test_put_upserts_and_preserves_an_existing_prompt_when_omitted(tmp_path) -> 
     store = RelayStore(tmp_path / "relay.sqlite3")
     try:
         store.put(record(), worker_prompt="first prompt")
-        updated = record(Phase.changes_requested, review_rounds=1, ci_attempts=1)
+        updated = record(phase=Phase.changes_requested, review_rounds=1, ci_attempts=1)
         store.put(updated)
         assert store.get(REPO, 56) == updated
         assert store.get_prompt(REPO, 56) == "first prompt"
@@ -157,9 +158,7 @@ def test_events_use_utc_iso_timestamps_and_cannot_be_updated_or_deleted(tmp_path
         store.record_event(REPO, 56, "review", "round", at=explicit)
         store.record_event(REPO, 56, "ci", "attempt")
         with closing(sqlite3.connect(path)) as db:
-            events = db.execute(
-                "SELECT at, kind, detail FROM events ORDER BY rowid"
-            ).fetchall()
+            events = db.execute("SELECT at, kind, detail FROM events ORDER BY rowid").fetchall()
         assert events[0] == ("2026-11-20T10:30:00+00:00", "review", "round")
         assert datetime.fromisoformat(events[1][0]).utcoffset() == timedelta(0)
         assert events[1][1:] == ("ci", "attempt")
@@ -175,15 +174,13 @@ def test_events_use_utc_iso_timestamps_and_cannot_be_updated_or_deleted(tmp_path
 def test_reopening_retains_records_prompts_and_events(tmp_path) -> None:
     path = tmp_path / "relay.sqlite3"
     store = RelayStore(path)
-    store.put(record(Phase.changes_requested, review_rounds=1), worker_prompt="prompt")
+    store.put(record(phase=Phase.changes_requested, review_rounds=1), worker_prompt="prompt")
     store.record_event(REPO, 56, "verdict", "changes_requested")
     store.close()
 
     reopened = RelayStore(path)
     try:
-        assert reopened.get(REPO, 56) == record(
-            Phase.changes_requested, review_rounds=1
-        )
+        assert reopened.get(REPO, 56) == record(phase=Phase.changes_requested, review_rounds=1)
         assert reopened.get_prompt(REPO, 56) == "prompt"
         with closing(sqlite3.connect(path)) as db:
             assert db.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
@@ -191,14 +188,15 @@ def test_reopening_retains_records_prompts_and_events(tmp_path) -> None:
         reopened.close()
 
 
+@pytest.mark.parametrize("version", [0, 2])
 def test_a_different_schema_version_raises_without_deleting_or_changing_the_file(
-    tmp_path,
+    tmp_path, version: int
 ) -> None:
     path = tmp_path / "relay.sqlite3"
     with closing(sqlite3.connect(path)) as db:
         db.execute("CREATE TABLE sentinel (value TEXT)")
         db.execute("INSERT INTO sentinel VALUES ('keep me')")
-        db.execute("PRAGMA user_version = 2")
+        db.execute(f"PRAGMA user_version = {version}")
         db.commit()
     before = path.read_bytes()
 
