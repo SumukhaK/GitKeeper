@@ -2,9 +2,9 @@ import subprocess
 from dataclasses import dataclass, field
 
 import pytest
-from gitkeeper.relay.token import gh_token_provider
 
 from gitkeeper.queue.errors import ErrorCategory, GitHubAuthorizationError
+from gitkeeper.relay.token import gh_token_provider
 
 _COMMAND = ["gh", "auth", "token"]
 _OPTIONS = {
